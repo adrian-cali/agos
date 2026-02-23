@@ -1,13 +1,31 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Set
+from typing import List, Set, Optional
 from datetime import datetime, timedelta
 import asyncio
 import random
 import logging
+import os
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ============= FIREBASE INIT =============
+
+_SERVICE_ACCOUNT_PATH = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
+
+if os.path.exists(_SERVICE_ACCOUNT_PATH):
+    cred = credentials.Certificate(_SERVICE_ACCOUNT_PATH)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    FIREBASE_ENABLED = True
+    logger.info("Firebase Admin SDK initialized.")
+else:
+    db = None
+    FIREBASE_ENABLED = False
+    logger.warning("serviceAccountKey.json not found — running without Firebase persistence.")
 
 app = FastAPI(title="AGOS WebSocket Server", version="1.0.0")
 
@@ -150,51 +168,106 @@ manager = ConnectionManager()
 
 
 async def handle_sensor_data(data: dict):
+    device_id = data.get("device_id", "unknown")
+    pump_active = data.get("pump_active", False)
+
     state["tank_data"].update({
         "level": data.get("level", state["tank_data"]["level"]),
         "volume": data.get("volume", state["tank_data"]["volume"]),
         "flow_rate": data.get("flow_rate", state["tank_data"]["flow_rate"]),
+        "pump_active": pump_active,
         "timestamp": datetime.now().isoformat()
     })
 
     level = state["tank_data"]["level"]
     state["tank_data"]["status"] = "optimal" if level >= 75 else "moderate" if level >= 50 else "low"
 
-    if "turbidity" in data:
-        state["water_quality"]["turbidity"]["value"] = data["turbidity"]
-        historical_data["turbidity"].append({
+    thresholds = state["settings"]["thresholds"]
+
+    for metric in ("turbidity", "ph", "tds"):
+        if metric not in data:
+            continue
+        value = data[metric]
+        state["water_quality"][metric]["value"] = value
+        historical_data[metric].append({
             "timestamp": datetime.now().isoformat(),
-            "value": round(data["turbidity"], 1)
+            "value": round(value, 1)
         })
         cutoff = datetime.now() - timedelta(days=30)
-        historical_data["turbidity"] = [
-            d for d in historical_data["turbidity"]
+        historical_data[metric] = [
+            d for d in historical_data[metric]
             if datetime.fromisoformat(d["timestamp"]) > cutoff
         ]
 
-    if "ph" in data:
-        state["water_quality"]["ph"]["value"] = data["ph"]
-        historical_data["ph"].append({
-            "timestamp": datetime.now().isoformat(),
-            "value": round(data["ph"], 1)
-        })
-        cutoff = datetime.now() - timedelta(days=30)
-        historical_data["ph"] = [
-            d for d in historical_data["ph"]
-            if datetime.fromisoformat(d["timestamp"]) > cutoff
-        ]
+    # Determine water quality statuses
+    turb = state["water_quality"]["turbidity"]["value"]
+    ph = state["water_quality"]["ph"]["value"]
+    tds = state["water_quality"]["tds"]["value"]
 
-    if "tds" in data:
-        state["water_quality"]["tds"]["value"] = data["tds"]
-        historical_data["tds"].append({
+    state["water_quality"]["turbidity"]["status"] = (
+        "optimal" if turb <= thresholds["turbidity_max"] else "critical"
+    )
+    state["water_quality"]["ph"]["status"] = (
+        "optimal" if thresholds["ph_min"] <= ph <= thresholds["ph_max"] else "critical"
+    )
+    state["water_quality"]["tds"]["status"] = (
+        "optimal" if tds <= thresholds["tds_max"] else "critical"
+    )
+
+    # Threshold alerts
+    alert_messages = []
+    if turb > thresholds["turbidity_max"]:
+        alert_messages.append(f"Turbidity {turb:.1f} NTU exceeds threshold {thresholds['turbidity_max']} NTU")
+    if not (thresholds["ph_min"] <= ph <= thresholds["ph_max"]):
+        alert_messages.append(f"pH {ph:.1f} out of range {thresholds['ph_min']}–{thresholds['ph_max']}")
+    if tds > thresholds["tds_max"]:
+        alert_messages.append(f"TDS {tds:.0f} ppm exceeds threshold {thresholds['tds_max']} ppm")
+    if level < 20:
+        alert_messages.append(f"Water level critically low: {level:.1f}%")
+
+    for msg in alert_messages:
+        alert = {
+            "id": str(len(state["alerts"]) + 1),
+            "type": "threshold_exceeded",
+            "title": "Water Quality Alert",
+            "description": msg,
             "timestamp": datetime.now().isoformat(),
-            "value": round(data["tds"], 1)
+            "is_read": False,
+            "severity": "warning"
+        }
+        state["alerts"].append(alert)
+        await manager.broadcast_to_apps({
+            "type": "system_alert",
+            "timestamp": datetime.now().isoformat(),
+            "alert": alert
         })
-        cutoff = datetime.now() - timedelta(days=30)
-        historical_data["tds"] = [
-            d for d in historical_data["tds"]
-            if datetime.fromisoformat(d["timestamp"]) > cutoff
-        ]
+
+    # Firestore write
+    if FIREBASE_ENABLED and db is not None:
+        try:
+            reading_doc = {
+                "device_id": device_id,
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                "level": state["tank_data"]["level"],
+                "volume": state["tank_data"]["volume"],
+                "flow_rate": state["tank_data"]["flow_rate"],
+                "pump_active": pump_active,
+                "turbidity": turb,
+                "ph": ph,
+                "tds": tds,
+                "status": state["tank_data"]["status"],
+            }
+            db.collection("sensor_readings").add(reading_doc)
+
+            # Update device last_seen
+            db.collection("devices").document(device_id).set({
+                "last_seen": firestore.SERVER_TIMESTAMP,
+                "status": "connected",
+                "level": state["tank_data"]["level"],
+                "pump_active": pump_active,
+            }, merge=True)
+        except Exception as e:
+            logger.error(f"Firestore write error: {e}")
 
     await manager.broadcast_to_apps({
         "type": "tank_update",
@@ -208,7 +281,11 @@ async def handle_sensor_data(data: dict):
         "data": state["water_quality"]
     })
 
-    logger.info(f"Data: Level={level:.1f}%, Flow={state['tank_data']['flow_rate']:.1f}")
+    logger.info(
+        f"[{device_id}] Level={level:.1f}% | "
+        f"Turb={turb:.1f} | pH={ph:.1f} | TDS={tds:.0f} | "
+        f"Pump={'ON' if pump_active else 'OFF'}"
+    )
 
 
 async def handle_alert(data: dict):
@@ -271,7 +348,7 @@ async def handle_get_history(data: dict, websocket: WebSocket):
     logger.info(f"Historical data sent: {metric} - {period} ({len(filtered_data)} points)")
 
 
-# ============= WEBSOCKET ENDPOINTS =============
+# ============= HTTP ENDPOINTS =============
 
 @app.get("/")
 async def root():
@@ -279,11 +356,89 @@ async def root():
         "message": "AGOS WebSocket Server",
         "version": "1.0.0",
         "status": "running",
+        "firebase": FIREBASE_ENABLED,
         "connections": {
             "sensors": len(manager.sensor_connections),
             "apps": len(manager.app_connections)
         }
     }
+
+
+@app.post("/devices/register")
+async def register_device(payload: dict):
+    """Register a new AGOS device (called from Flutter after pairing)."""
+    device_id = payload.get("device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id is required")
+
+    device_doc = {
+        "device_id": device_id,
+        "name": payload.get("name", f"AGOS Device {device_id[-4:]}"),
+        "owner_uid": payload.get("owner_uid"),
+        "registered_at": datetime.now().isoformat(),
+        "status": "registered",
+    }
+
+    # Add to in-memory state
+    existing_ids = {d["id"] for d in state["devices"]}
+    if device_id not in existing_ids:
+        state["devices"].append({
+            "id": device_id,
+            "name": device_doc["name"],
+            "status": "registered",
+            "last_seen": datetime.now().isoformat()
+        })
+
+    # Persist to Firestore
+    if FIREBASE_ENABLED and db is not None:
+        try:
+            db.collection("devices").document(device_id).set(device_doc, merge=True)
+        except Exception as e:
+            logger.error(f"Firestore device register error: {e}")
+
+    logger.info(f"Device registered: {device_id}")
+    return {"status": "ok", "device_id": device_id}
+
+
+@app.post("/pump/control")
+async def pump_control(payload: dict):
+    """Send a pump on/off command to the connected sensor."""
+    device_id = payload.get("device_id")
+    command = payload.get("command")  # "on" or "off"
+
+    if command not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="command must be 'on' or 'off'")
+
+    msg = {
+        "type": "pump_command",
+        "device_id": device_id,
+        "command": command,
+        "timestamp": datetime.now().isoformat()
+    }
+
+    # Log to Firestore
+    if FIREBASE_ENABLED and db is not None:
+        try:
+            db.collection("pump_commands").add({
+                **msg,
+                "timestamp": firestore.SERVER_TIMESTAMP,
+            })
+        except Exception as e:
+            logger.error(f"Firestore pump command error: {e}")
+
+    # Broadcast to sensor connections so ESP32 simulator can pick it up
+    disconnected = set()
+    for conn in manager.sensor_connections:
+        try:
+            await conn.send_json(msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    await manager.broadcast_to_apps(msg)
+    logger.info(f"Pump command sent: {command} → {device_id}")
+    return {"status": "ok", "command": command}
 
 
 @app.websocket("/ws/sensor")

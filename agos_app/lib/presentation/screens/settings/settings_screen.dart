@@ -1,5 +1,6 @@
 import 'package:agos_app/core/constants/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
 
@@ -571,9 +572,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(
+                    context, '/login', (r) => false);
+              }
             },
             child: Text(
               'Sign Out',
