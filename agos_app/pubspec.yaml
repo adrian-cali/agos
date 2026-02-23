@@ -1,0 +1,32 @@
+name: agos_app
+description: AGOS - Water Monitoring System
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.4.9
+  web_socket_channel: ^2.4.0
+  fl_chart: ^0.66.0
+  google_fonts: ^6.1.0
+  cupertino_icons: ^1.0.6
+  percent_indicator: ^4.2.3
+  flutter_svg: ^2.2.3
+  device_preview: ^1.2.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/svg/
+    - assets/images/
+    - assets/images/dev_team/

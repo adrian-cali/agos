@@ -1,0 +1,1134 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:math' as math;
+import 'package:fl_chart/fl_chart.dart';
+import '../../../data/services/websocket_service.dart';
+import '../../widgets/notification_modal.dart';
+import '../../widgets/bottom_nav_bar.dart';
+
+enum TimePeriod { twentyFourHours, sevenDays, thirtyDays }
+enum MetricType { turbidity, ph, tds }
+
+class DashboardScreen extends ConsumerStatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with TickerProviderStateMixin {
+  MetricType selectedMetric = MetricType.turbidity;
+  TimePeriod selectedPeriod = TimePeriod.twentyFourHours;
+  
+  late AnimationController _particleController;
+  late AnimationController _cardController;
+  late List<Particle> _particles;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAnimations();
+    _generateParticles();
+    _loadHistoricalData();
+  }
+
+  void _initializeAnimations() {
+    _particleController = AnimationController(
+      duration: const Duration(seconds: 20),
+      vsync: this,
+    )..repeat();
+
+    _cardController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    )..forward();
+  }
+
+  void _generateParticles() {
+    final random = math.Random();
+    _particles = List.generate(25, (index) {
+      return Particle(
+        x: random.nextDouble() * 400,
+        y: random.nextDouble() * 200,
+        size: random.nextDouble() * 3.5 + 0.5,
+        opacity: random.nextDouble() * 0.8 + 0.1,
+        speed: random.nextDouble() * 0.5 + 0.2,
+        direction: random.nextDouble() * 2 * math.pi,
+      );
+    });
+  }
+
+  void _loadHistoricalData() {
+    String period = selectedPeriod == TimePeriod.twentyFourHours
+        ? '24h'
+        : selectedPeriod == TimePeriod.sevenDays
+            ? '7d'
+            : '30d';
+
+    String metric = selectedMetric == MetricType.turbidity
+        ? 'turbidity'
+        : selectedMetric == MetricType.ph
+            ? 'ph'
+            : 'tds';
+
+    try {
+      final wsService = ref.read(webSocketServiceProvider);
+      if (wsService.isConnected) {
+        wsService.requestHistoricalData(metric, period);
+      }
+    } catch (e) {
+      print('Failed to load historical data: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _particleController.dispose();
+    _cardController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F8FB),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // Header with blue gradient and particles (no animation)
+              _buildHeader(),
+              // Scrollable content
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 25),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 25),
+                    // System Status Card (no animation)
+                    _buildSystemStatusCard(),
+                    const SizedBox(height: 25),
+                    // Water Quality Metrics Title
+                    _buildSectionTitle('Water Quality Metrics'),
+                    const SizedBox(height: 25),
+                    // Water Quality Metrics Cards
+                    AnimatedBuilder(
+                      animation: _cardController,
+                      builder: (context, child) {
+                        return Column(
+                          children: [
+                            _buildMetricCard(
+                              'Turbidity',
+                              '13.1 NTU',
+                              '● Optimal',
+                              0.65,
+                              'Target: < 20 NTU',
+                              const LinearGradient(
+                                colors: [Color(0xFF00D3F2), Color(0xFF2B7FFF)],
+                              ),
+                              0.0,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildMetricCard(
+                              'pH Level',
+                              '7.4',
+                              '● Optimal',
+                              0.74,
+                              'Target: 6.5 - 8.5',
+                              const LinearGradient(
+                                colors: [Color(0xFFC27AFF), Color(0xFFF6339A)],
+                              ),
+                              0.3,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildMetricCard(
+                              'Total Dissolved Solids',
+                              '347 ppm',
+                              '● Optimal',
+                              0.69,
+                              'Target: < 500 ppm',
+                              const LinearGradient(
+                                colors: [Color(0xFF7C86FF), Color(0xFF2B7FFF)],
+                              ),
+                              0.6,
+                            ),
+                            const SizedBox(height: 25),
+                            _buildSectionTitle('Historical Trends'),
+                            const SizedBox(height: 25),
+                            _buildChartsSection(),
+                            const SizedBox(height: 32),
+                            Center(
+                              child: SvgPicture.asset(
+                                'assets/svg/agos_logo.svg',
+                                width: 45,
+                                height: 23.2,
+                                fit: BoxFit.contain,
+                                colorFilter: const ColorFilter.mode(
+                                  Color(0xFF00D3F2),
+                                  BlendMode.srcIn,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 100), // Bottom padding for navigation
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 1),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      // height: 278,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF1447E6),
+            Color(0xFF0092B8),
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Floating particles animation
+          AnimatedBuilder(
+            animation: _particleController,
+            builder: (context, child) {
+              return CustomPaint(
+                size: Size(double.infinity, 150),
+                painter: ParticlesPainter(_particles, _particleController.value),
+              );
+            },
+          ),
+          // Header content
+          Padding(
+            padding: EdgeInsets.fromLTRB(25, 25 + MediaQuery.of(context).padding.top, 25, 25),
+            child: Column(
+              children: [
+                // Top row with notification
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const SizedBox(width: 40), // Space equivalent to notification icon
+                    // Notification icon (same style as home/settings)
+                    GestureDetector(
+                      onTap: () => showNotificationModal(context),
+                      child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF1BA9E1).withValues(alpha: 0.15),
+                                  blurRadius: 25,
+                                  offset: const Offset(0, 8),
+                                  spreadRadius: 2,
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.notifications_outlined,
+                              color: Color(0xFF5DCCFC),
+                              size: 20,
+                            ),
+                          ),
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFF6B6B),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Logo and title section
+                Container(
+                  // height: 104,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // AGOS Logo and title
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // AGOS Logo
+                          SvgPicture.asset(
+                            'assets/svg/agos_logo.svg',
+                            width: 50,
+                            height: 54,
+                            colorFilter: const ColorFilter.mode(
+                              Colors.white,
+                              BlendMode.srcIn,
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          // AGOS text
+                          // SvgPicture.asset(
+                          //   'assets/svg/agos_square_logo.svg',
+                          //   width: 122,
+                          //   height: 32,
+                          //   colorFilter: const ColorFilter.mode(
+                          //     Colors.white,
+                          //     BlendMode.srcIn,
+                          //   ),
+                          // ),
+                        ],
+                      ),
+                      // const SizedBox(height: 16),
+                      // University name
+                      Text(
+                        'Pamantasan ng Lungsod ng Maynila',
+                        style: TextStyle(
+                          color: const Color(0xFFBEDBFF),
+                          fontSize: 12,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      // Live indicator and last updated
+                      Row(
+                        children: [
+                          // Live indicator (same style as home page)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.0),
+                              border: Border.all(
+                                color: const Color(0xFF53EAFD),
+                                width: 0.8,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF53EAFD).withValues(alpha: 0.32),
+                                  blurRadius: 11,
+                                  offset: const Offset(0, 0),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF53EAFD),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Live',
+                                  style: TextStyle(
+                                    color: const Color(0xFF53EAFD),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w400,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          // Updated text
+                          Text(
+                            '• Updated 0s ago',
+                            style: TextStyle(
+                              color: const Color(0xFF53EAFD),
+                              fontSize: 12,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemStatusCard() {
+    return Container(
+      width: double.infinity,
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.18),
+          width: 1.18,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Row(
+          children: [
+            // Status icon container
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Center(
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Status text
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'System Status',
+                    style: TextStyle(
+                      color: const Color(0xFF62748E),
+                      fontSize: 14,
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  // const SizedBox(height: 4),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFF1447E6), Color(0xFF0092B8)],
+                    ).createShader(bounds),
+                    child: Text(
+                      'Operational',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Operational badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 5),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00D492), Color(0xFF00BBA7)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 15,
+                    offset: const Offset(0, 10),
+                    spreadRadius: -3,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 6,
+                    offset: const Offset(0, 4),
+                    spreadRadius: -4,
+                  ),
+                ],
+              ),
+              child: Text(
+                'Operational',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Container(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [Color(0xFF1447E6), Color(0xFF0092B8)],
+          ).createShader(bounds),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+    String title,
+    String value,
+    String status,
+    double progress,
+    String target,
+    LinearGradient iconGradient,
+    double animationDelay,
+  ) {
+    final animation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _cardController,
+        curve: Interval(animationDelay, 1.0, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 50 * (1 - animation.value)),
+          child: Opacity(
+            opacity: animation.value,
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  width: 1.18,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // Top row with icon, title, value, and status
+                    Row(
+                      children: [
+                        // Gradient icon container
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            gradient: iconGradient,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: iconGradient.colors.first.withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.water_drop_outlined,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Title and value
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: TextStyle(
+                                  color: const Color(0xFF62748E),
+                                  fontSize: 14,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              ShaderMask(
+                                shaderCallback: (bounds) => const LinearGradient(
+                                  colors: [Color(0xFF1447E6), Color(0xFF0092B8)],
+                                ).createShader(bounds),
+                                child: Text(
+                                  value,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Status
+                        Text(
+                          status,
+                          style: TextStyle(
+                            color: const Color(0xFF009966),
+                            fontSize: 12,
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 9),
+                    // Progress bar
+                    Container(
+                      height: 8,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFF1F5F9), Color(0xFFE2E8F0)],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: progress,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF00D492), Color(0xFF00BBA7)],
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    // Target text
+                    Text(
+                      target,
+                      style: TextStyle(
+                        color: const Color(0xFF90A1B9),
+                        fontSize: 12,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildChartsSection() {
+    return Column(
+      children: [
+        _HistoricalChartCard(
+          label: 'Turbidity',
+          gradient: const LinearGradient(
+            colors: [Color(0xFF00B8DB), Color(0xFF155DFC)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          primaryColor: const Color(0xFF00B8DB),
+        ),
+        const SizedBox(height: 20),
+        _HistoricalChartCard(
+          label: 'pH',
+          gradient: const LinearGradient(
+            colors: [Color(0xFFC27AFF), Color(0xFFF6339A)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          primaryColor: const Color(0xFFC27AFF),
+        ),
+        const SizedBox(height: 20),
+        _HistoricalChartCard(
+          label: 'TDS',
+          gradient: const LinearGradient(
+            colors: [Color(0xFF7C86FF), Color(0xFF2B7FFF)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          primaryColor: const Color(0xFF7C86FF),
+        ),
+      ],
+    );
+  }
+}
+
+// Particle class for floating animation
+class Particle {
+  double x;
+  double y;
+  final double size;
+  final double opacity;
+  final double speed;
+  final double direction;
+
+  Particle({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.opacity,
+    required this.speed,
+    required this.direction,
+  });
+
+  void update(double width, double height, double time) {
+    x += math.cos(direction + time * 0.5) * speed;
+    y += math.sin(direction + time * 0.3) * speed * 0.5;
+
+    // Wrap around screen
+    if (x > width) x = 0;
+    if (x < 0) x = width;
+    if (y > height) y = 0;
+    if (y < 0) y = height;
+  }
+}
+
+// Custom painter for floating particles
+class ParticlesPainter extends CustomPainter {
+  final List<Particle> particles;
+  final double animationValue;
+
+  ParticlesPainter(this.particles, this.animationValue);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xFF53EAFD).withValues(alpha: 0.3);
+
+    for (final particle in particles) {
+      particle.update(size.width, size.height, animationValue * 20);
+      
+      paint.color = Color(0xFF53EAFD).withValues(alpha: particle.opacity * 0.3);
+      canvas.drawCircle(
+        Offset(particle.x, particle.y),
+        particle.size,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant ParticlesPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Historical Chart Card – self-contained card with real fl_chart line chart
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HistoricalChartCard extends StatefulWidget {
+  final String label;
+  final LinearGradient gradient;
+  final Color primaryColor;
+
+  const _HistoricalChartCard({
+    required this.label,
+    required this.gradient,
+    required this.primaryColor,
+  });
+
+  @override
+  State<_HistoricalChartCard> createState() => _HistoricalChartCardState();
+}
+
+class _HistoricalChartCardState extends State<_HistoricalChartCard> {
+  TimePeriod _selectedPeriod = TimePeriod.twentyFourHours;
+
+  static final Map<String, Map<TimePeriod, List<FlSpot>>> _dummyData = {
+    'Turbidity': {
+      TimePeriod.twentyFourHours: [
+        FlSpot(0, 8.5), FlSpot(1, 9.1), FlSpot(2, 8.8), FlSpot(3, 9.5),
+        FlSpot(4, 10.2), FlSpot(5, 11.0), FlSpot(6, 12.3), FlSpot(7, 13.8),
+        FlSpot(8, 14.2), FlSpot(9, 13.5), FlSpot(10, 13.0), FlSpot(11, 12.5),
+        FlSpot(12, 12.1), FlSpot(13, 12.8), FlSpot(14, 13.2), FlSpot(15, 12.5),
+        FlSpot(16, 11.8), FlSpot(17, 11.2), FlSpot(18, 11.6), FlSpot(19, 10.8),
+        FlSpot(20, 10.2), FlSpot(21, 9.5), FlSpot(22, 8.8), FlSpot(23, 8.2),
+      ],
+      TimePeriod.sevenDays: [
+        FlSpot(0, 10.2), FlSpot(1, 11.5), FlSpot(2, 12.8), FlSpot(3, 11.0),
+        FlSpot(4, 9.5), FlSpot(5, 10.8), FlSpot(6, 9.2),
+      ],
+      TimePeriod.thirtyDays: List.generate(
+          30,
+          (i) => FlSpot(i.toDouble(),
+              (8.0 + 5.0 * math.sin(i * 0.35 + 0.5) + i * 0.08).clamp(0.0, 24.0))),
+    },
+    'pH': {
+      TimePeriod.twentyFourHours: [
+        FlSpot(0, 7.2), FlSpot(1, 7.5), FlSpot(2, 7.8), FlSpot(3, 8.2),
+        FlSpot(4, 8.8), FlSpot(5, 9.5), FlSpot(6, 10.5), FlSpot(7, 11.0),
+        FlSpot(8, 12.2), FlSpot(9, 13.0), FlSpot(10, 13.5), FlSpot(11, 14.0),
+        FlSpot(12, 13.8), FlSpot(13, 13.2), FlSpot(14, 12.5), FlSpot(15, 11.5),
+        FlSpot(16, 10.8), FlSpot(17, 10.2), FlSpot(18, 9.5), FlSpot(19, 8.8),
+        FlSpot(20, 8.2), FlSpot(21, 7.8), FlSpot(22, 7.5), FlSpot(23, 7.3),
+      ],
+      TimePeriod.sevenDays: [
+        FlSpot(0, 8.5), FlSpot(1, 9.2), FlSpot(2, 11.5), FlSpot(3, 13.0),
+        FlSpot(4, 12.0), FlSpot(5, 10.5), FlSpot(6, 9.0),
+      ],
+      TimePeriod.thirtyDays: List.generate(
+          30,
+          (i) => FlSpot(i.toDouble(),
+              (7.5 + 4.5 * math.sin(i * 0.4 + 1.0) + i * 0.05).clamp(0.0, 24.0))),
+    },
+    'TDS': {
+      TimePeriod.twentyFourHours: [
+        FlSpot(0, 10.0), FlSpot(1, 10.5), FlSpot(2, 11.0), FlSpot(3, 11.8),
+        FlSpot(4, 12.5), FlSpot(5, 13.2), FlSpot(6, 14.0), FlSpot(7, 14.5),
+        FlSpot(8, 13.8), FlSpot(9, 13.0), FlSpot(10, 12.5), FlSpot(11, 11.8),
+        FlSpot(12, 12.2), FlSpot(13, 12.8), FlSpot(14, 13.0), FlSpot(15, 12.2),
+        FlSpot(16, 11.5), FlSpot(17, 11.0), FlSpot(18, 11.5), FlSpot(19, 11.0),
+        FlSpot(20, 10.5), FlSpot(21, 10.0), FlSpot(22, 9.5), FlSpot(23, 9.2),
+      ],
+      TimePeriod.sevenDays: [
+        FlSpot(0, 11.5), FlSpot(1, 12.8), FlSpot(2, 13.5), FlSpot(3, 12.0),
+        FlSpot(4, 10.5), FlSpot(5, 11.2), FlSpot(6, 10.0),
+      ],
+      TimePeriod.thirtyDays: List.generate(
+          30,
+          (i) => FlSpot(i.toDouble(),
+              (9.0 + 4.0 * math.sin(i * 0.3 + 2.0) + i * 0.08).clamp(0.0, 24.0))),
+    },
+  };
+
+  List<FlSpot> get _spots => _dummyData[widget.label]?[_selectedPeriod] ?? [];
+
+  double get _maxX {
+    switch (_selectedPeriod) {
+      case TimePeriod.twentyFourHours: return 23;
+      case TimePeriod.sevenDays: return 6;
+      case TimePeriod.thirtyDays: return 29;
+    }
+  }
+
+  String _getBottomLabel(double value) {
+    // Only show labels at exact integer positions
+    final intVal = value.toInt();
+    if (value != intVal.toDouble()) return '';
+    switch (_selectedPeriod) {
+      case TimePeriod.twentyFourHours:
+        const labels = {0: '0:00', 6: '6:00', 12: '12:00', 18: '18:00', 23: '23:00'};
+        return labels[intVal] ?? '';
+      case TimePeriod.sevenDays:
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        if (intVal >= 0 && intVal < days.length) return days[intVal];
+        return '';
+      case TimePeriod.thirtyDays:
+        const labels = {0: '1', 5: '6', 10: '11', 15: '16', 20: '21', 25: '26', 29: '30'};
+        return labels[intVal] ?? '';
+    }
+  }
+
+  String _getTooltipX(double value) {
+    switch (_selectedPeriod) {
+      case TimePeriod.twentyFourHours:
+        return '${value.toInt().toString().padLeft(2, '0')}:00';
+      case TimePeriod.sevenDays:
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        final idx = value.toInt();
+        return (idx >= 0 && idx < days.length) ? days[idx] : '';
+      case TimePeriod.thirtyDays:
+        return '${value.toInt() + 1}';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  gradient: widget.gradient,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: widget.primaryColor.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _buildPeriodBtn('24H', TimePeriod.twentyFourHours),
+                  const SizedBox(width: 6),
+                  _buildPeriodBtn('7D', TimePeriod.sevenDays),
+                  const SizedBox(width: 6),
+                  _buildPeriodBtn('30D', TimePeriod.thirtyDays),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 200,
+            child: LineChart(
+              _buildChartData(),
+              duration: const Duration(milliseconds: 300),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodBtn(String label, TimePeriod period) {
+    final isSelected = _selectedPeriod == period;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPeriod = period),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? widget.primaryColor : const Color(0xFFB0BEC5),
+              fontSize: 13,
+              fontFamily: 'Inter',
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 3),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: 2,
+            width: isSelected ? 24 : 0,
+            decoration: BoxDecoration(
+              color: widget.primaryColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  LineChartData _buildChartData() {
+    final spots = _spots;
+    return LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          curveSmoothness: 0.35,
+          gradient: widget.gradient,
+          barWidth: 2.5,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            gradient: LinearGradient(
+              colors: [
+                widget.primaryColor.withValues(alpha: 0.15),
+                Colors.transparent,
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+      ],
+      titlesData: FlTitlesData(
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 30,
+            interval: 7,
+            getTitlesWidget: (value, meta) {
+              const yLabels = <int, String>{0: '0', 7: '7', 14: '14', 25: '25'};
+              final intVal = value.toInt();
+              if (value != intVal.toDouble() || !yLabels.containsKey(intVal)) return const SizedBox.shrink();
+              return Text(
+                yLabels[intVal]!,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontFamily: 'Inter'),
+              );
+            },
+          ),
+        ),
+        bottomTitles: AxisTitles(
+          axisNameWidget: Text(
+            _selectedPeriod == TimePeriod.thirtyDays || _selectedPeriod == TimePeriod.sevenDays ? 'in Days' : 'in Hours',
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Inter'),
+          ),
+          axisNameSize: 18,
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 22,
+            interval: 1,
+            getTitlesWidget: (value, meta) {
+              final label = _getBottomLabel(value);
+              if (label.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  label,
+                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontFamily: 'Inter'),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false,
+        horizontalInterval: 7,
+        getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFE8F0F7), strokeWidth: 1),
+      ),
+      borderData: FlBorderData(show: false),
+      minX: 0,
+      maxX: _maxX,
+      minY: 0,
+      maxY: 25,
+      lineTouchData: LineTouchData(
+        enabled: true,
+        touchTooltipData: LineTouchTooltipData(
+          tooltipBgColor: Colors.white,
+          tooltipBorder: const BorderSide(color: Color(0xFFE2E8F0)),
+          tooltipRoundedRadius: 8.0,
+          getTooltipItems: (touchedSpots) {
+            return touchedSpots.map((spot) {
+              return LineTooltipItem(
+                '${_getTooltipX(spot.x)}\n${spot.y.toStringAsFixed(1)}',
+                TextStyle(
+                  color: widget.primaryColor,
+                  fontSize: 12,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w500,
+                ),
+              );
+            }).toList();
+          },
+        ),
+        getTouchedSpotIndicator: (barData, spotIndexes) {
+          return spotIndexes.map((index) {
+            return TouchedSpotIndicatorData(
+              FlLine(
+                color: widget.primaryColor.withValues(alpha: 0.5),
+                strokeWidth: 1.5,
+                dashArray: [4, 4],
+              ),
+              FlDotData(
+                getDotPainter: (spot, percent, bar, idx) => FlDotCirclePainter(
+                  radius: 5,
+                  color: widget.primaryColor,
+                  strokeWidth: 2,
+                  strokeColor: Colors.white,
+                ),
+              ),
+            );
+          }).toList();
+        },
+      ),
+    );
+  }
+}
