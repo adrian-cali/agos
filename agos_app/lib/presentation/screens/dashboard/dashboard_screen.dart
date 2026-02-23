@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import '../../../data/services/websocket_service.dart';
+import '../../../data/services/firestore_service.dart';
 import '../../widgets/notification_modal.dart';
 import '../../widgets/bottom_nav_bar.dart';
 
@@ -792,7 +793,7 @@ class ParticlesPainter extends CustomPainter {
 // Historical Chart Card – self-contained card with real fl_chart line chart
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _HistoricalChartCard extends StatefulWidget {
+class _HistoricalChartCard extends ConsumerStatefulWidget {
   final String label;
   final LinearGradient gradient;
   final Color primaryColor;
@@ -804,10 +805,10 @@ class _HistoricalChartCard extends StatefulWidget {
   });
 
   @override
-  State<_HistoricalChartCard> createState() => _HistoricalChartCardState();
+  ConsumerState<_HistoricalChartCard> createState() => _HistoricalChartCardState();
 }
 
-class _HistoricalChartCardState extends State<_HistoricalChartCard> {
+class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   TimePeriod _selectedPeriod = TimePeriod.twentyFourHours;
 
   static final Map<String, Map<TimePeriod, List<FlSpot>>> _dummyData = {
@@ -867,8 +868,47 @@ class _HistoricalChartCardState extends State<_HistoricalChartCard> {
     },
   };
 
-  List<FlSpot> get _spots => _dummyData[widget.label]?[_selectedPeriod] ?? [];
+  // ── Firestore integration ─────────────────────────────────────────────────
+  static const _kDeviceId = 'esp32-sim-001';
 
+  String get _firestoreField {
+    switch (widget.label) {
+      case 'Turbidity': return 'turbidity';
+      case 'pH': return 'ph';
+      default: return 'tds';
+    }
+  }
+
+  int get _periodHours {
+    switch (_selectedPeriod) {
+      case TimePeriod.twentyFourHours: return 24;
+      case TimePeriod.sevenDays: return 168;
+      case TimePeriod.thirtyDays: return 720;
+    }
+  }
+
+  /// Returns live Firestore spots, or falls back to dummy data when empty.
+  List<FlSpot> get _spots {
+    final historyAsync = ref.watch(
+      readingHistoryProvider((_kDeviceId, _periodHours)),
+    );
+    final readings = historyAsync.valueOrNull ?? [];
+    if (readings.isEmpty) {
+      return _dummyData[widget.label]?[_selectedPeriod] ?? [];
+    }
+    // Sort oldest-first so x index matches chronological order.
+    final sorted = [...readings]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return sorted.asMap().entries.map((e) {
+      final double value = switch (_firestoreField) {
+        'turbidity' => e.value.turbidity,
+        'ph' => e.value.ph,
+        _ => e.value.tds,
+      };
+      return FlSpot(e.key.toDouble(), value);
+    }).toList();
+  }
+
+  /// Fallback axis maximum when no live data is available.
   double get _maxX {
     switch (_selectedPeriod) {
       case TimePeriod.twentyFourHours: return 23;
@@ -1012,6 +1052,8 @@ class _HistoricalChartCardState extends State<_HistoricalChartCard> {
 
   LineChartData _buildChartData() {
     final spots = _spots;
+    // Use the actual last x value so the axis always covers the data range.
+    final effectiveMaxX = spots.isNotEmpty ? spots.last.x : _maxX;
     return LineChartData(
       lineBarsData: [
         LineChartBarData(
@@ -1086,7 +1128,7 @@ class _HistoricalChartCardState extends State<_HistoricalChartCard> {
       ),
       borderData: FlBorderData(show: false),
       minX: 0,
-      maxX: _maxX,
+      maxX: effectiveMaxX,
       minY: 0,
       maxY: 25,
       lineTouchData: LineTouchData(

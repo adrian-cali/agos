@@ -55,7 +55,7 @@ class _AuthGateState extends State<_AuthGate> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final user = FirebaseAuth.instance.currentUser;
-      final route = user != null ? '/' : '/login';
+      final route = user != null ? '/home' : '/login';
       Navigator.of(context).pushReplacementNamed(route);
     });
   }

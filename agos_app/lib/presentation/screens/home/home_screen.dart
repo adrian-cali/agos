@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:math' as math;
 import '../../../data/services/websocket_service.dart';
+import '../../../data/services/firestore_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
 
@@ -38,6 +39,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     _waveController.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning,';
+    if (hour < 17) return 'Good Afternoon,';
+    return 'Good Evening,';
   }
 
   /// Wraps [child] with a staggered slide-up + fade-in animation.
@@ -109,7 +117,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Good Morning,',
+                _greeting(),
                 style: TextStyle(
                   color: const Color(0xFF90A5B4),
                   fontSize: 14,
@@ -119,14 +127,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ),
               //const SizedBox(height: 2),
-              Text(
-                'JOHN DOE',
-                style: TextStyle(
-                  color: const Color(0xFF141A1E),
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Poppins',
-                ),
+              Consumer(
+                builder: (context, ref, _) {
+                  final profileAsync = ref.watch(userProfileProvider);
+                  final name = profileAsync.valueOrNull?.name.toUpperCase() ?? '';
+                  return Text(
+                    name.isEmpty ? '...' : name,
+                    style: TextStyle(
+                      color: const Color(0xFF141A1E),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Poppins',
+                    ),
+                  );
+                },
               ),
             ],
           ),
