@@ -86,7 +86,6 @@ flutter_log2.txt
 
 # ── Internal planning / prompt docs ──────────────────────────
 CLAUDE_PROMPT.md
-IMPLEMENTATION_GUIDE.md
 SYSTEM_PLAN.md
 
 # ── Coverage / Cache / Temp ──────────────────────────────────
