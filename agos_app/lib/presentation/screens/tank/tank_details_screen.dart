@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/websocket_service.dart';
+import '../../../data/services/firestore_service.dart'
+    show latestReadingProvider;
 
 class TankDetailsScreen extends ConsumerWidget {
   const TankDetailsScreen({super.key});
@@ -10,6 +12,40 @@ class TankDetailsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tankData = ref.watch(tankDataProvider);
     final waterQuality = ref.watch(waterQualityProvider);
+
+    // Firestore fallback when WebSocket hasn't delivered data yet
+    const deviceId = 'esp32-sim-001';
+    final latestAsync = ref.watch(latestReadingProvider(deviceId));
+    final latest = latestAsync.valueOrNull;
+
+    // Effective tank values: prefer WS if it has live data
+    final wsHasTank = tankData.level > 0;
+    final level = wsHasTank ? tankData.level : (latest?.level ?? 0.0);
+    final volume = wsHasTank ? tankData.volume : (latest?.volume ?? 0.0);
+    final capacity = tankData.capacity > 0 ? tankData.capacity : 500.0;
+    final flowRate =
+        wsHasTank ? tankData.flowRate : (latest?.flowRate ?? 0.0);
+    final status = wsHasTank ? tankData.status : (latest?.status ?? 'unknown');
+
+    // Effective quality values: prefer WS if it has live data
+    final wsHasQuality = waterQuality.turbidity.value > 0 ||
+        waterQuality.ph.value > 0 ||
+        waterQuality.tds.value > 0;
+    final turbidity = wsHasQuality
+        ? waterQuality.turbidity.value
+        : (latest?.turbidity ?? 0.0);
+    final ph =
+        wsHasQuality ? waterQuality.ph.value : (latest?.ph ?? 0.0);
+    final tds =
+        wsHasQuality ? waterQuality.tds.value : (latest?.tds ?? 0.0);
+
+    final turbidityStr =
+        latest != null || wsHasQuality ? '${turbidity.toStringAsFixed(1)} NTU' : '-- NTU';
+    final phStr =
+        latest != null || wsHasQuality ? ph.toStringAsFixed(1) : '--';
+    final tdsStr =
+        latest != null || wsHasQuality ? '${tds.toStringAsFixed(0)} ppm' : '-- ppm';
+    final flowStr = '${flowRate.toStringAsFixed(1)} L/min';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -63,7 +99,7 @@ class TankDetailsScreen extends ConsumerWidget {
                         alignment: Alignment.bottomCenter,
                         children: [
                           FractionallySizedBox(
-                            heightFactor: tankData.level / 100,
+                            heightFactor: (level / 100).clamp(0.0, 1.0),
                             child: Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
@@ -80,7 +116,7 @@ class TankDetailsScreen extends ConsumerWidget {
                           ),
                           Center(
                             child: Text(
-                              '${tankData.level.toInt()}%',
+                              '${level.toInt()}%',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 28,
@@ -93,7 +129,7 @@ class TankDetailsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      '${tankData.volume.toStringAsFixed(0)} L / ${tankData.capacity.toStringAsFixed(0)} L',
+                      '${volume.toStringAsFixed(0)} L / ${capacity.toStringAsFixed(0)} L',
                       style: const TextStyle(
                           color: Colors.white70, fontSize: 16),
                     ),
@@ -108,31 +144,31 @@ class TankDetailsScreen extends ConsumerWidget {
                   children: [
                     _buildDetailCard(
                         'Tank Status',
-                        tankData.status.toUpperCase(),
+                        status.toUpperCase(),
                         Icons.water_drop,
-                        _statusColor(tankData.status)),
+                        _statusColor(status)),
                     const SizedBox(height: 12),
                     _buildDetailCard(
                         'Flow Rate',
-                        '${tankData.flowRate.toStringAsFixed(1)} L/min',
+                        flowStr,
                         Icons.speed,
                         AppColors.primary),
                     const SizedBox(height: 12),
                     _buildDetailCard(
                         'Turbidity',
-                        '${waterQuality.turbidity.value} NTU',
+                        turbidityStr,
                         Icons.water,
                         AppColors.primary),
                     const SizedBox(height: 12),
                     _buildDetailCard(
                         'pH Level',
-                        '${waterQuality.ph.value}',
+                        phStr,
                         Icons.science,
                         const Color(0xFFE91E63)),
                     const SizedBox(height: 12),
                     _buildDetailCard(
                         'TDS',
-                        '${waterQuality.tds.value} ppm',
+                        tdsStr,
                         Icons.analytics,
                         AppColors.secondary),
                   ],
