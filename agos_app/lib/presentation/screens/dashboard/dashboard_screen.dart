@@ -877,60 +877,63 @@ class _HistoricalChartCard extends ConsumerStatefulWidget {
 class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   TimePeriod _selectedPeriod = TimePeriod.twentyFourHours;
 
+  // Per-metric ranges
+  double get _yMin {
+    switch (widget.label) {
+      case 'pH': return 0;
+      case 'TDS': return 0;
+      default: return 0; // Turbidity
+    }
+  }
+
+  double get _yMax {
+    switch (widget.label) {
+      case 'pH': return 14;
+      case 'TDS': return 1000;
+      default: return 30; // Turbidity NTU
+    }
+  }
+
+  double get _yInterval {
+    switch (widget.label) {
+      case 'pH': return 2;
+      case 'TDS': return 200;
+      default: return 10; // Turbidity
+    }
+  }
+
+  String _formatY(double v) {
+    switch (widget.label) {
+      case 'pH': return v.toStringAsFixed(1);
+      case 'TDS': return '${v.toInt()}';
+      default: return '${v.toInt()}';
+    }
+  }
+
   static final Map<String, Map<TimePeriod, List<FlSpot>>> _dummyData = {
     'Turbidity': {
-      TimePeriod.twentyFourHours: [
-        FlSpot(0, 8.5), FlSpot(1, 9.1), FlSpot(2, 8.8), FlSpot(3, 9.5),
-        FlSpot(4, 10.2), FlSpot(5, 11.0), FlSpot(6, 12.3), FlSpot(7, 13.8),
-        FlSpot(8, 14.2), FlSpot(9, 13.5), FlSpot(10, 13.0), FlSpot(11, 12.5),
-        FlSpot(12, 12.1), FlSpot(13, 12.8), FlSpot(14, 13.2), FlSpot(15, 12.5),
-        FlSpot(16, 11.8), FlSpot(17, 11.2), FlSpot(18, 11.6), FlSpot(19, 10.8),
-        FlSpot(20, 10.2), FlSpot(21, 9.5), FlSpot(22, 8.8), FlSpot(23, 8.2),
-      ],
-      TimePeriod.sevenDays: [
-        FlSpot(0, 10.2), FlSpot(1, 11.5), FlSpot(2, 12.8), FlSpot(3, 11.0),
-        FlSpot(4, 9.5), FlSpot(5, 10.8), FlSpot(6, 9.2),
-      ],
-      TimePeriod.thirtyDays: List.generate(
-          30,
-          (i) => FlSpot(i.toDouble(),
-              (8.0 + 5.0 * math.sin(i * 0.35 + 0.5) + i * 0.08).clamp(0.0, 24.0))),
+      TimePeriod.twentyFourHours: List.generate(24, (i) =>
+          FlSpot(i.toDouble(), (2.0 + 3.0 * math.sin(i * 0.4) + 1.0).clamp(0, 30))),
+      TimePeriod.sevenDays: List.generate(7, (i) =>
+          FlSpot(i.toDouble(), (3.0 + 2.0 * math.sin(i * 0.9)).clamp(0, 30))),
+      TimePeriod.thirtyDays: List.generate(30, (i) =>
+          FlSpot(i.toDouble(), (2.5 + 4.0 * math.sin(i * 0.35)).clamp(0, 30))),
     },
     'pH': {
-      TimePeriod.twentyFourHours: [
-        FlSpot(0, 7.2), FlSpot(1, 7.5), FlSpot(2, 7.8), FlSpot(3, 8.2),
-        FlSpot(4, 8.8), FlSpot(5, 9.5), FlSpot(6, 10.5), FlSpot(7, 11.0),
-        FlSpot(8, 12.2), FlSpot(9, 13.0), FlSpot(10, 13.5), FlSpot(11, 14.0),
-        FlSpot(12, 13.8), FlSpot(13, 13.2), FlSpot(14, 12.5), FlSpot(15, 11.5),
-        FlSpot(16, 10.8), FlSpot(17, 10.2), FlSpot(18, 9.5), FlSpot(19, 8.8),
-        FlSpot(20, 8.2), FlSpot(21, 7.8), FlSpot(22, 7.5), FlSpot(23, 7.3),
-      ],
-      TimePeriod.sevenDays: [
-        FlSpot(0, 8.5), FlSpot(1, 9.2), FlSpot(2, 11.5), FlSpot(3, 13.0),
-        FlSpot(4, 12.0), FlSpot(5, 10.5), FlSpot(6, 9.0),
-      ],
-      TimePeriod.thirtyDays: List.generate(
-          30,
-          (i) => FlSpot(i.toDouble(),
-              (7.5 + 4.5 * math.sin(i * 0.4 + 1.0) + i * 0.05).clamp(0.0, 24.0))),
+      TimePeriod.twentyFourHours: List.generate(24, (i) =>
+          FlSpot(i.toDouble(), (7.0 + 0.8 * math.sin(i * 0.4)).clamp(0, 14))),
+      TimePeriod.sevenDays: List.generate(7, (i) =>
+          FlSpot(i.toDouble(), (7.2 + 0.5 * math.sin(i * 0.9)).clamp(0, 14))),
+      TimePeriod.thirtyDays: List.generate(30, (i) =>
+          FlSpot(i.toDouble(), (7.0 + 0.7 * math.sin(i * 0.35)).clamp(0, 14))),
     },
     'TDS': {
-      TimePeriod.twentyFourHours: [
-        FlSpot(0, 10.0), FlSpot(1, 10.5), FlSpot(2, 11.0), FlSpot(3, 11.8),
-        FlSpot(4, 12.5), FlSpot(5, 13.2), FlSpot(6, 14.0), FlSpot(7, 14.5),
-        FlSpot(8, 13.8), FlSpot(9, 13.0), FlSpot(10, 12.5), FlSpot(11, 11.8),
-        FlSpot(12, 12.2), FlSpot(13, 12.8), FlSpot(14, 13.0), FlSpot(15, 12.2),
-        FlSpot(16, 11.5), FlSpot(17, 11.0), FlSpot(18, 11.5), FlSpot(19, 11.0),
-        FlSpot(20, 10.5), FlSpot(21, 10.0), FlSpot(22, 9.5), FlSpot(23, 9.2),
-      ],
-      TimePeriod.sevenDays: [
-        FlSpot(0, 11.5), FlSpot(1, 12.8), FlSpot(2, 13.5), FlSpot(3, 12.0),
-        FlSpot(4, 10.5), FlSpot(5, 11.2), FlSpot(6, 10.0),
-      ],
-      TimePeriod.thirtyDays: List.generate(
-          30,
-          (i) => FlSpot(i.toDouble(),
-              (9.0 + 4.0 * math.sin(i * 0.3 + 2.0) + i * 0.08).clamp(0.0, 24.0))),
+      TimePeriod.twentyFourHours: List.generate(24, (i) =>
+          FlSpot(i.toDouble(), (320.0 + 60.0 * math.sin(i * 0.4)).clamp(0, 1000))),
+      TimePeriod.sevenDays: List.generate(7, (i) =>
+          FlSpot(i.toDouble(), (300.0 + 80.0 * math.sin(i * 0.9)).clamp(0, 1000))),
+      TimePeriod.thirtyDays: List.generate(30, (i) =>
+          FlSpot(i.toDouble(), (310.0 + 70.0 * math.sin(i * 0.35)).clamp(0, 1000))),
     },
   };
 
@@ -953,6 +956,9 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     }
   }
 
+  // Maps x-index → actual timestamp for live-data tooltips
+  final Map<double, DateTime> _timestampMap = {};
+
   /// Returns live Firestore spots, or falls back to dummy data when empty.
   List<FlSpot> get _spots {
     final historyAsync = ref.watch(
@@ -960,17 +966,21 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     );
     final readings = historyAsync.valueOrNull ?? [];
     if (readings.isEmpty) {
+      _timestampMap.clear();
       return _dummyData[widget.label]?[_selectedPeriod] ?? [];
     }
     // Sort oldest-first so x index matches chronological order.
     final sorted = [...readings]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    _timestampMap.clear();
     return sorted.asMap().entries.map((e) {
       final double value = switch (_firestoreField) {
         'turbidity' => e.value.turbidity,
         'ph' => e.value.ph,
         _ => e.value.tds,
       };
-      return FlSpot(e.key.toDouble(), value);
+      final x = e.key.toDouble();
+      _timestampMap[x] = e.value.timestamp.toDate();
+      return FlSpot(x, value);
     }).toList();
   }
 
@@ -1002,6 +1012,21 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   }
 
   String _getTooltipX(double value) {
+    // If we have a real timestamp for this index, show it
+    final ts = _timestampMap[value];
+    if (ts != null) {
+      final h = ts.hour.toString().padLeft(2, '0');
+      final m = ts.minute.toString().padLeft(2, '0');
+      switch (_selectedPeriod) {
+        case TimePeriod.twentyFourHours:
+          return '$h:$m';
+        case TimePeriod.sevenDays:
+          return '${ts.month}/${ts.day} $h:$m';
+        case TimePeriod.thirtyDays:
+          return '${ts.month}/${ts.day}';
+      }
+    }
+    // Dummy data fallback
     switch (_selectedPeriod) {
       case TimePeriod.twentyFourHours:
         return '${value.toInt().toString().padLeft(2, '0')}:00';
@@ -1149,15 +1174,13 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 30,
-            interval: 7,
+            reservedSize: 36,
+            interval: _yInterval,
             getTitlesWidget: (value, meta) {
-              const yLabels = <int, String>{0: '0', 7: '7', 14: '14', 25: '25'};
-              final intVal = value.toInt();
-              if (value != intVal.toDouble() || !yLabels.containsKey(intVal)) return const SizedBox.shrink();
+              if (value < _yMin || value > _yMax) return const SizedBox.shrink();
               return Text(
-                yLabels[intVal]!,
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontFamily: 'Inter'),
+                _formatY(value),
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 9, fontFamily: 'Inter'),
               );
             },
           ),
@@ -1189,14 +1212,14 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       gridData: FlGridData(
         show: true,
         drawVerticalLine: false,
-        horizontalInterval: 7,
+        horizontalInterval: _yInterval,
         getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFE8F0F7), strokeWidth: 1),
       ),
       borderData: FlBorderData(show: false),
       minX: 0,
       maxX: effectiveMaxX,
-      minY: 0,
-      maxY: 25,
+      minY: _yMin,
+      maxY: _yMax,
       lineTouchData: LineTouchData(
         enabled: true,
         touchTooltipData: LineTouchTooltipData(
