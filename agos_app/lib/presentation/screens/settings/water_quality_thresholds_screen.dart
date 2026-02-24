@@ -1,46 +1,103 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
+import '../../../data/services/firestore_service.dart';
 
-class WaterQualityThresholdsScreen extends StatefulWidget {
+class WaterQualityThresholdsScreen extends ConsumerStatefulWidget {
   const WaterQualityThresholdsScreen({super.key});
 
   @override
-  State<WaterQualityThresholdsScreen> createState() =>
+  ConsumerState<WaterQualityThresholdsScreen> createState() =>
       _WaterQualityThresholdsScreenState();
 }
 
 class _WaterQualityThresholdsScreenState
-    extends State<WaterQualityThresholdsScreen> {
+    extends ConsumerState<WaterQualityThresholdsScreen> {
+  bool _initialised = false;
+  bool _saving = false;
+
   // Turbidity (NTU)
-  double _turbidityWarning = 20;
-  double _turbidityCritical = 30;
+  double _turbidityWarning = 10;
+  double _turbidityCritical = 15;
 
   // pH Level
   double _phMin = 6.5;
   double _phMax = 8.5;
-  double _phCriticalMin = 6.0;
+  double _phCriticalMin = 5.5;
   double _phCriticalMax = 9.0;
 
   // TDS (ppm)
-  double _tdsWarning = 500;
-  double _tdsCritical = 700;
+  double _tdsWarning = 400;
+  double _tdsCritical = 450;
+
+  // Tank level (%)
+  double _levelMin = 20;
+
+  void _applyThresholds(UserThresholds t) {
+    _turbidityWarning = t.turbidityMax;
+    _turbidityCritical = (t.turbidityMax * 1.5).clamp(0, 100);
+    _phMin = t.phMin;
+    _phMax = t.phMax;
+    _phCriticalMin = (t.phMin - 1.0).clamp(0, 14);
+    _phCriticalMax = (t.phMax + 0.5).clamp(0, 14);
+    _tdsWarning = t.tdsMax;
+    _tdsCritical = (t.tdsMax * 1.125).clamp(0, 1000);
+    _levelMin = t.levelMin;
+  }
 
   void _resetDefaults() {
     setState(() {
-      _turbidityWarning = 20;
-      _turbidityCritical = 30;
-      _phMin = 6.5;
-      _phMax = 8.5;
-      _phCriticalMin = 6.0;
-      _phCriticalMax = 9.0;
-      _tdsWarning = 500;
-      _tdsCritical = 700;
+      _applyThresholds(const UserThresholds());
     });
+  }
+
+  Future<void> _save() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Not signed in')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await ref.read(firestoreServiceProvider).saveThresholds(
+            user.uid,
+            UserThresholds(
+              turbidityMax: _turbidityWarning,
+              phMin: _phMin,
+              phMax: _phMax,
+              tdsMax: _tdsWarning,
+              levelMin: _levelMin,
+            ),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Thresholds saved.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Load saved thresholds once when provider first emits
+    final savedAsync = ref.watch(userThresholdsProvider);
+    savedAsync.whenData((t) {
+      if (!_initialised) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() { _applyThresholds(t); _initialised = true; });
+        });
+      }
+    });
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
@@ -229,6 +286,31 @@ class _WaterQualityThresholdsScreenState
                         ),
                       ],
                     ),
+                    const SizedBox(height: 19),
+                    _buildSectionHeader('TANK LEVEL (%)'),
+                    const SizedBox(height: 12),
+                    _buildParameterCard(
+                      iconGradient: const [Color(0xFF00D3F2), Color(0xFF0AA1DD)],
+                      iconData: Icons.water_drop_outlined,
+                      title: 'Minimum Tank Level',
+                      children: [
+                        _buildSliderRow(
+                          label: 'Alert Below',
+                          value: _levelMin,
+                          badge: '${_levelMin.round()}%',
+                          badgeBg: const Color(0xFFFEF3C6),
+                          badgeFg: const Color(0xFFBB4D00),
+                          min: 0,
+                          max: 100,
+                          onChanged: (v) => setState(() => _levelMin = v),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildHintBox(
+                          'Optimal: Keep tank above 20%',
+                          'Recommended: Alert when level drops below 20%',
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 24),
                     // Action buttons
                     Row(
@@ -262,34 +344,34 @@ class _WaterQualityThresholdsScreenState
                         const SizedBox(width: 19),
                         Expanded(
                           child: GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content:
-                                        Text('Thresholds saved.')),
-                              );
-                            },
+                            onTap: _saving ? null : _save,
                             child: Container(
                               height: 36,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(14),
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF00B8DB),
-                                    Color(0xFF155DFC)
-                                  ],
+                                gradient: LinearGradient(
+                                  colors: _saving
+                                      ? [Colors.grey.shade400, Colors.grey.shade400]
+                                      : const [Color(0xFF00B8DB), Color(0xFF155DFC)],
                                 ),
                               ),
-                              child: const Center(
-                                child: Text(
-                                  'Save Changes',
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                              child: Center(
+                                child: _saving
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white))
+                                    : const Text(
+                                        'Save Changes',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 14,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                               ),
                             ),
                           ),

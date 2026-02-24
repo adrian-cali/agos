@@ -76,6 +76,55 @@ class UserProfile {
   }
 }
 
+// ─── User Thresholds ──────────────────────────────────────────────────────
+
+class UserThresholds {
+  final double turbidityMax;  // NTU — above this is warning/critical
+  final double phMin;         // pH below this is warning
+  final double phMax;         // pH above this is warning
+  final double tdsMax;        // ppm — above this is warning/critical
+  final double levelMin;      // % — below this is warning
+
+  const UserThresholds({
+    this.turbidityMax = 10.0,
+    this.phMin = 6.5,
+    this.phMax = 8.5,
+    this.tdsMax = 400.0,
+    this.levelMin = 20.0,
+  });
+
+  UserThresholds copyWith({
+    double? turbidityMax,
+    double? phMin,
+    double? phMax,
+    double? tdsMax,
+    double? levelMin,
+  }) =>
+      UserThresholds(
+        turbidityMax: turbidityMax ?? this.turbidityMax,
+        phMin: phMin ?? this.phMin,
+        phMax: phMax ?? this.phMax,
+        tdsMax: tdsMax ?? this.tdsMax,
+        levelMin: levelMin ?? this.levelMin,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'turbidity_max': turbidityMax,
+        'ph_min': phMin,
+        'ph_max': phMax,
+        'tds_max': tdsMax,
+        'level_min': levelMin,
+      };
+
+  factory UserThresholds.fromMap(Map<String, dynamic> m) => UserThresholds(
+        turbidityMax: (m['turbidity_max'] ?? 10.0).toDouble(),
+        phMin: (m['ph_min'] ?? 6.5).toDouble(),
+        phMax: (m['ph_max'] ?? 8.5).toDouble(),
+        tdsMax: (m['tds_max'] ?? 400.0).toDouble(),
+        levelMin: (m['level_min'] ?? 20.0).toDouble(),
+      );
+}
+
 // ============= Service =============
 
 class FirestoreService {
@@ -149,6 +198,30 @@ class FirestoreService {
       },
     );
   }
+
+  /// Stream of user threshold settings.
+  Stream<UserThresholds> userThresholdsStream(String uid) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('thresholds')
+        .snapshots()
+        .map((doc) {
+      if (!doc.exists || doc.data() == null) return const UserThresholds();
+      return UserThresholds.fromMap(doc.data()!);
+    });
+  }
+
+  /// Save user threshold settings.
+  Future<void> saveThresholds(String uid, UserThresholds t) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('thresholds')
+        .set(t.toMap());
+  }
 }
 
 // ============= Providers =============
@@ -199,55 +272,68 @@ final userProfileProvider = StreamProvider<UserProfile?>((ref) {
   return service.userProfileStream(user.uid);
 });
 
+/// User threshold settings stream for the signed-in user.
+final userThresholdsProvider = StreamProvider<UserThresholds>((ref) {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return Stream.value(const UserThresholds());
+  final service = ref.watch(firestoreServiceProvider);
+  return service.userThresholdsStream(user.uid);
+});
+
 // ============= Alert helpers =============
 
 /// Converts recent SensorReadings into AlertItems based on threshold rules.
 /// This lets the notifications screen show historical alerts even when the
 /// WebSocket is offline or a fresh session just started.
-List<AlertItem> _alertsFromReadings(List<SensorReading> readings) {
+List<AlertItem> _alertsFromReadings(
+    List<SensorReading> readings, UserThresholds t) {
   final alerts = <AlertItem>[];
   for (final r in readings) {
     final id = '${r.deviceId}_${r.timestamp.millisecondsSinceEpoch}';
     final ts = r.timestamp.toIso8601String();
 
-    if (r.turbidity > 10) {
+    if (r.turbidity > t.turbidityMax) {
+      final criticalThreshold = t.turbidityMax * 1.5;
       alerts.add(AlertItem(
         id: '${id}_turbidity',
         type: 'water_quality',
         title: 'High Turbidity Detected',
         description:
-            'Turbidity is ${r.turbidity.toStringAsFixed(1)} NTU — exceeds 10 NTU limit.',
+            'Turbidity is ${r.turbidity.toStringAsFixed(1)} NTU — exceeds ${t.turbidityMax.toStringAsFixed(0)} NTU limit.',
         timestamp: ts,
-        severity: r.turbidity > 15 ? 'critical' : 'warning',
+        severity: r.turbidity > criticalThreshold ? 'critical' : 'warning',
       ));
     }
 
-    if (r.ph < 6.5 || r.ph > 8.5) {
-      final low = r.ph < 6.5;
+    if (r.ph < t.phMin || r.ph > t.phMax) {
+      final low = r.ph < t.phMin;
+      final criticalLow = t.phMin - 1.0;
+      final criticalHigh = t.phMax + 0.5;
       alerts.add(AlertItem(
         id: '${id}_ph',
         type: 'water_quality',
         title: low ? 'pH Too Low' : 'pH Too High',
         description:
-            'pH level is ${r.ph.toStringAsFixed(1)} — outside safe range 6.5–8.5.',
+            'pH level is ${r.ph.toStringAsFixed(1)} — outside safe range ${t.phMin}–${t.phMax}.',
         timestamp: ts,
-        severity: (r.ph < 5.5 || r.ph > 9.0) ? 'critical' : 'warning',
+        severity: (r.ph < criticalLow || r.ph > criticalHigh) ? 'critical' : 'warning',
       ));
     }
 
-    if (r.tds > 400) {
+    if (r.tds > t.tdsMax) {
+      final criticalThreshold = t.tdsMax * 1.125;
       alerts.add(AlertItem(
         id: '${id}_tds',
         type: 'water_quality',
         title: 'High TDS Detected',
         description:
-            'TDS is ${r.tds.toStringAsFixed(0)} ppm — exceeds 400 ppm limit.',
+            'TDS is ${r.tds.toStringAsFixed(0)} ppm — exceeds ${t.tdsMax.toStringAsFixed(0)} ppm limit.',
         timestamp: ts,
-        severity: r.tds > 450 ? 'critical' : 'warning',
+        severity: r.tds > criticalThreshold ? 'critical' : 'warning',
       ));
     }
 
-    if (r.level < 20) {
+    if (r.level < t.levelMin) {
       alerts.add(AlertItem(
         id: '${id}_level',
         type: 'system',
@@ -255,7 +341,7 @@ List<AlertItem> _alertsFromReadings(List<SensorReading> readings) {
         description:
             'Tank level is ${r.level.toStringAsFixed(0)}% — consider refilling.',
         timestamp: ts,
-        severity: r.level < 10 ? 'critical' : 'warning',
+        severity: r.level < (t.levelMin / 2) ? 'critical' : 'warning',
       ));
     }
 
@@ -283,11 +369,13 @@ String _fmtDt(DateTime dt) {
 }
 
 /// Stream of [AlertItem]s derived from the last 50 Firestore readings.
-/// deviceId defaults to 'esp32-sim-001'.
+/// Thresholds are loaded from the current user's settings.
 final firestoreAlertsProvider =
     StreamProvider.family<List<AlertItem>, String>((ref, deviceId) {
   final service = ref.watch(firestoreServiceProvider);
+  final thresholds = ref.watch(userThresholdsProvider).valueOrNull ??
+      const UserThresholds();
   return service
       .latestReadingsStream(deviceId, limit: 50)
-      .map(_alertsFromReadings);
+      .map((readings) => _alertsFromReadings(readings, thresholds));
 });
