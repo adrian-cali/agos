@@ -1,18 +1,262 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../../data/services/firestore_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
 
-class DataLoggingScreen extends StatefulWidget {
+class DataLoggingScreen extends ConsumerStatefulWidget {
   const DataLoggingScreen({super.key});
 
   @override
-  State<DataLoggingScreen> createState() => _DataLoggingScreenState();
+  ConsumerState<DataLoggingScreen> createState() => _DataLoggingScreenState();
 }
 
-class _DataLoggingScreenState extends State<DataLoggingScreen> {
+class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   bool _automaticLogging = true;
   bool _cloudSync = false;
   int _retentionDays = 30; // 7, 30, or 90
+
+  bool _loadingPrefs = true;
+  bool _exportingCsv = false;
+  bool _exportingJson = false;
+  bool _exportingPdf = false;
+  bool _savingPrefs = false;
+
+  static const _kDeviceId = 'esp32-sim-001';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      setState(() => _loadingPrefs = false);
+      return;
+    }
+    try {
+      final service = ref.read(firestoreServiceProvider);
+      final prefs = await service.loadDataLoggingPrefs(user.uid);
+      if (mounted) {
+        setState(() {
+          _automaticLogging = prefs['automaticLogging'] as bool? ?? true;
+          _cloudSync = prefs['cloudSync'] as bool? ?? false;
+          _retentionDays = prefs['retentionDays'] as int? ?? 30;
+          _loadingPrefs = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingPrefs = false);
+    }
+  }
+
+  Future<List<SensorReading>> _fetchReadings() async {
+    final service = ref.read(firestoreServiceProvider);
+    return service.fetchReadings(_kDeviceId, days: _retentionDays);
+  }
+
+  Future<void> _exportCsv() async {
+    setState(() => _exportingCsv = true);
+    try {
+      final readings = await _fetchReadings();
+      if (readings.isEmpty) {
+        _snack('No data to export.');
+        return;
+      }
+      final buf = StringBuffer();
+      buf.writeln(
+          'timestamp,device_id,turbidity_ntu,ph,tds_ppm,level_pct,flow_rate,pump_active');
+      for (final r in readings) {
+        buf.writeln(
+            '${r.timestamp.toIso8601String()},${r.deviceId},${r.turbidity},${r.ph},${r.tds},${r.level},${r.flowRate},${r.pumpActive}');
+      }
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/agos_export.csv');
+      await file.writeAsString(buf.toString());
+      await Share.shareXFiles([XFile(file.path)],
+          subject: 'AGOS Sensor Data Export');
+    } catch (e) {
+      _snack('Export failed: $e');
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
+    }
+  }
+
+  Future<void> _exportJson() async {
+    setState(() => _exportingJson = true);
+    try {
+      final readings = await _fetchReadings();
+      if (readings.isEmpty) {
+        _snack('No data to export.');
+        return;
+      }
+      final list = readings
+          .map((r) => {
+                'timestamp': r.timestamp.toIso8601String(),
+                'device_id': r.deviceId,
+                'turbidity': r.turbidity,
+                'ph': r.ph,
+                'tds': r.tds,
+                'level': r.level,
+                'flow_rate': r.flowRate,
+                'pump_active': r.pumpActive,
+              })
+          .toList();
+      final json = const JsonEncoder.withIndent('  ').convert(list);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/agos_export.json');
+      await file.writeAsString(json);
+      await Share.shareXFiles([XFile(file.path)],
+          subject: 'AGOS Sensor Data Export (JSON)');
+    } catch (e) {
+      _snack('Export failed: $e');
+    } finally {
+      if (mounted) setState(() => _exportingJson = false);
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    setState(() => _exportingPdf = true);
+    try {
+      final readings = await _fetchReadings();
+      final doc = pw.Document();
+      final now = DateTime.now();
+
+      doc.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (ctx) => [
+          pw.Header(level: 0, child: pw.Text('AGOS Water Quality Report')),
+          pw.Paragraph(
+              text:
+                  'Generated: ${now.year}-${_pad(now.month)}-${_pad(now.day)} ${_pad(now.hour)}:${_pad(now.minute)}'),
+          pw.Paragraph(text: 'Device: $_kDeviceId'),
+          pw.Paragraph(
+              text: 'Period: last $_retentionDays days | Readings: ${readings.length}'),
+          pw.SizedBox(height: 12),
+          if (readings.isEmpty)
+            pw.Paragraph(text: 'No data found for this period.')
+          else ...[
+            _summaryTable(readings),
+            pw.SizedBox(height: 12),
+            pw.Text('Latest 50 Readings',
+                style: pw.TextStyle(
+                    fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            _dataTable(readings.reversed.take(50).toList().reversed.toList()),
+          ],
+        ],
+      ));
+
+      final bytes = await doc.save();
+      await Printing.sharePdf(bytes: bytes, filename: 'agos_report.pdf');
+    } catch (e) {
+      _snack('PDF generation failed: $e');
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
+
+  String _pad(int n) => n.toString().padLeft(2, '0');
+
+  pw.Widget _summaryTable(List<SensorReading> readings) {
+    double avgTurb = readings.map((r) => r.turbidity).reduce((a, b) => a + b) /
+        readings.length;
+    double avgPh =
+        readings.map((r) => r.ph).reduce((a, b) => a + b) / readings.length;
+    double avgTds =
+        readings.map((r) => r.tds).reduce((a, b) => a + b) / readings.length;
+    return pw.Table.fromTextArray(
+      headers: ['Metric', 'Average', 'Min', 'Max'],
+      data: [
+        [
+          'Turbidity (NTU)',
+          avgTurb.toStringAsFixed(2),
+          readings
+              .map((r) => r.turbidity)
+              .reduce((a, b) => a < b ? a : b)
+              .toStringAsFixed(2),
+          readings
+              .map((r) => r.turbidity)
+              .reduce((a, b) => a > b ? a : b)
+              .toStringAsFixed(2),
+        ],
+        [
+          'pH',
+          avgPh.toStringAsFixed(2),
+          readings
+              .map((r) => r.ph)
+              .reduce((a, b) => a < b ? a : b)
+              .toStringAsFixed(2),
+          readings
+              .map((r) => r.ph)
+              .reduce((a, b) => a > b ? a : b)
+              .toStringAsFixed(2),
+        ],
+        [
+          'TDS (ppm)',
+          avgTds.toStringAsFixed(1),
+          readings
+              .map((r) => r.tds)
+              .reduce((a, b) => a < b ? a : b)
+              .toStringAsFixed(1),
+          readings
+              .map((r) => r.tds)
+              .reduce((a, b) => a > b ? a : b)
+              .toStringAsFixed(1),
+        ],
+      ],
+    );
+  }
+
+  pw.Widget _dataTable(List<SensorReading> readings) {
+    return pw.Table.fromTextArray(
+      headers: ['Time', 'Turb', 'pH', 'TDS', 'Level%'],
+      data: readings
+          .map((r) => [
+                '${_pad(r.timestamp.hour)}:${_pad(r.timestamp.minute)}',
+                r.turbidity.toStringAsFixed(1),
+                r.ph.toStringAsFixed(2),
+                r.tds.toStringAsFixed(0),
+                r.level.toStringAsFixed(1),
+              ])
+          .toList(),
+      cellStyle: const pw.TextStyle(fontSize: 8),
+      headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+    );
+  }
+
+  Future<void> _savePrefs() async {
+    setState(() => _savingPrefs = true);
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user == null) return;
+      final service = ref.read(firestoreServiceProvider);
+      await service.saveDataLoggingPrefs(user.uid, {
+        'automaticLogging': _automaticLogging,
+        'cloudSync': _cloudSync,
+        'retentionDays': _retentionDays,
+      });
+      if (mounted) _snack('Preferences saved.');
+    } catch (e) {
+      if (mounted) _snack('Save failed: $e');
+    } finally {
+      if (mounted) setState(() => _savingPrefs = false);
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,8 +284,10 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       subtitle: 'Record sensor data continuously',
                       trailing: _buildToggle(
                         value: _automaticLogging,
-                        onChanged: (v) =>
-                            setState(() => _automaticLogging = v),
+                        onChanged: (v) {
+                          setState(() => _automaticLogging = v);
+                          _savePrefs();
+                        },
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -51,7 +297,10 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       subtitle: 'Backup data to cloud storage',
                       trailing: _buildToggle(
                         value: _cloudSync,
-                        onChanged: (v) => setState(() => _cloudSync = v),
+                        onChanged: (v) {
+                          setState(() => _cloudSync = v);
+                          _savePrefs();
+                        },
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -67,6 +316,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       iconData: Icons.table_chart_outlined,
                       title: 'Export as CSV',
                       subtitle: 'Spreadsheet format for analysis',
+                      onTap: _exportCsv,
+                      isLoading: _exportingCsv,
                     ),
                     const SizedBox(height: 5),
                     _buildExportCard(
@@ -77,6 +328,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       iconData: Icons.data_object_outlined,
                       title: 'Export as JSON',
                       subtitle: 'Raw data format',
+                      onTap: _exportJson,
+                      isLoading: _exportingJson,
                     ),
                     const SizedBox(height: 5),
                     _buildExportCard(
@@ -87,6 +340,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       iconData: Icons.picture_as_pdf_outlined,
                       title: 'Generate Report',
                       subtitle: 'PDF with charts and statistics',
+                      onTap: _exportPdf,
+                      isLoading: _exportingPdf,
                     ),
                     const SizedBox(height: 24),
                     _buildSectionHeader('DATA MANAGEMENT'),
@@ -364,8 +619,10 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: GestureDetector(
-                    onTap: () =>
-                        setState(() => _retentionDays = days),
+                    onTap: () {
+                      setState(() => _retentionDays = days);
+                      _savePrefs();
+                    },
                     child: Container(
                       height: 36,
                       decoration: BoxDecoration(
@@ -408,8 +665,12 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
     required IconData iconData,
     required String title,
     required String subtitle,
+    required VoidCallback onTap,
+    bool isLoading = false,
   }) {
-    return Container(
+    return GestureDetector(
+      onTap: isLoading ? null : onTap,
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -462,10 +723,17 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right,
-              size: 20, color: Color(0xFF62748E)),
+          isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right,
+                  size: 20, color: Color(0xFF62748E)),
         ],
       ),
+    ),
     );
   }
 

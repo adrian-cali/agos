@@ -161,8 +161,45 @@ class FirestoreService {
         );
   }
 
-  /// Sensor readings for the last [hours] hours, suitable for charts.
-  Stream<List<SensorReading>> historyStream(
+  /// One-shot fetch of sensor readings for a device over the past [days] days.
+  Future<List<SensorReading>> fetchReadings(String deviceId,
+      {int days = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    final snap = await _db
+        .collection('sensor_readings')
+        .where('device_id', isEqualTo: deviceId)
+        .where('timestamp', isGreaterThan: Timestamp.fromDate(cutoff))
+        .orderBy('timestamp', descending: false)
+        .get();
+    return snap.docs.map(SensorReading.fromFirestore).toList();
+  }
+
+  /// Save data-logging preferences for a user.
+  Future<void> saveDataLoggingPrefs(
+      String uid, Map<String, dynamic> prefs) async {
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('dataLogging')
+        .set(prefs, SetOptions(merge: true));
+  }
+
+  /// Load data-logging preferences for a user (returns defaults if missing).
+  Future<Map<String, dynamic>> loadDataLoggingPrefs(String uid) async {
+    final doc = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('dataLogging')
+        .get();
+    if (!doc.exists || doc.data() == null) {
+      return {'automaticLogging': true, 'cloudSync': false, 'retentionDays': 30};
+    }
+    return doc.data()!;
+  }
+
+
     String deviceId, {
     int hours = 24,
   }) {
