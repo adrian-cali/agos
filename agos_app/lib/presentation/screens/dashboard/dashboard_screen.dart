@@ -912,27 +912,27 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
 
   static final Map<String, Map<TimePeriod, List<FlSpot>>> _dummyData = {
     'Turbidity': {
-      TimePeriod.twentyFourHours: List.generate(24, (i) =>
+      TimePeriod.twentyFourHours: List.generate(25, (i) =>
           FlSpot(i.toDouble(), (2.0 + 3.0 * math.sin(i * 0.4) + 1.0).clamp(0, 30))),
-      TimePeriod.sevenDays: List.generate(7, (i) =>
+      TimePeriod.sevenDays: List.generate(8, (i) =>
           FlSpot(i.toDouble(), (3.0 + 2.0 * math.sin(i * 0.9)).clamp(0, 30))),
-      TimePeriod.thirtyDays: List.generate(30, (i) =>
+      TimePeriod.thirtyDays: List.generate(31, (i) =>
           FlSpot(i.toDouble(), (2.5 + 4.0 * math.sin(i * 0.35)).clamp(0, 30))),
     },
     'pH': {
-      TimePeriod.twentyFourHours: List.generate(24, (i) =>
+      TimePeriod.twentyFourHours: List.generate(25, (i) =>
           FlSpot(i.toDouble(), (7.0 + 0.8 * math.sin(i * 0.4)).clamp(0, 14))),
-      TimePeriod.sevenDays: List.generate(7, (i) =>
+      TimePeriod.sevenDays: List.generate(8, (i) =>
           FlSpot(i.toDouble(), (7.2 + 0.5 * math.sin(i * 0.9)).clamp(0, 14))),
-      TimePeriod.thirtyDays: List.generate(30, (i) =>
+      TimePeriod.thirtyDays: List.generate(31, (i) =>
           FlSpot(i.toDouble(), (7.0 + 0.7 * math.sin(i * 0.35)).clamp(0, 14))),
     },
     'TDS': {
-      TimePeriod.twentyFourHours: List.generate(24, (i) =>
+      TimePeriod.twentyFourHours: List.generate(25, (i) =>
           FlSpot(i.toDouble(), (320.0 + 60.0 * math.sin(i * 0.4)).clamp(0, 1000))),
-      TimePeriod.sevenDays: List.generate(7, (i) =>
+      TimePeriod.sevenDays: List.generate(8, (i) =>
           FlSpot(i.toDouble(), (300.0 + 80.0 * math.sin(i * 0.9)).clamp(0, 1000))),
-      TimePeriod.thirtyDays: List.generate(30, (i) =>
+      TimePeriod.thirtyDays: List.generate(31, (i) =>
           FlSpot(i.toDouble(), (310.0 + 70.0 * math.sin(i * 0.35)).clamp(0, 1000))),
     },
   };
@@ -956,10 +956,11 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     }
   }
 
-  // Maps x-index → actual timestamp for live-data tooltips
+  // Maps x-value → actual timestamp for live-data tooltips
   final Map<double, DateTime> _timestampMap = {};
 
-  /// Returns live Firestore spots, or falls back to dummy data when empty.
+  /// Returns live Firestore spots with X = hours-ago (24H) or days-ago (7D/30D).
+  /// Falls back to dummy data when no readings exist.
   List<FlSpot> get _spots {
     final historyAsync = ref.watch(
       readingHistoryProvider((_kDeviceId, _periodHours)),
@@ -969,73 +970,87 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       _timestampMap.clear();
       return _dummyData[widget.label]?[_selectedPeriod] ?? [];
     }
-    // Sort oldest-first so x index matches chronological order.
-    final sorted = [...readings]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final now = DateTime.now();
     _timestampMap.clear();
-    return sorted.asMap().entries.map((e) {
+    final List<FlSpot> result = [];
+    for (final r in readings) {
+      final dt = r.timestamp.toDate();
+      final diffMinutes = now.difference(dt).inMinutes;
+      if (diffMinutes < 0) continue;
+      // X = hours ago for 24H; days ago for 7D/30D (as fraction)
+      final double x = _selectedPeriod == TimePeriod.twentyFourHours
+          ? diffMinutes / 60.0
+          : diffMinutes / (60.0 * 24.0);
       final double value = switch (_firestoreField) {
-        'turbidity' => e.value.turbidity,
-        'ph' => e.value.ph,
-        _ => e.value.tds,
+        'turbidity' => r.turbidity,
+        'ph' => r.ph,
+        _ => r.tds,
       };
-      final x = e.key.toDouble();
-      _timestampMap[x] = e.value.timestamp.toDate();
-      return FlSpot(x, value);
-    }).toList();
+      // Round key to 2 decimal places for map lookup
+      final xKey = double.parse(x.toStringAsFixed(2));
+      _timestampMap[xKey] = dt;
+      result.add(FlSpot(xKey, value));
+    }
+    // Sort oldest-first (largest x = furthest in past → put last on chart, so reverse: smallest x = most recent)
+    // For line chart oldest-first means largest x first → reverse
+    result.sort((a, b) => b.x.compareTo(a.x)); // oldest first (largest hours-ago at left edge)
+    // Re-index x so oldest = 0 for cleaner axis, while keeping timestamp map
+    if (result.isEmpty) return _dummyData[widget.label]?[_selectedPeriod] ?? [];
+    return result;
   }
 
   /// Fallback axis maximum when no live data is available.
   double get _maxX {
     switch (_selectedPeriod) {
-      case TimePeriod.twentyFourHours: return 23;
-      case TimePeriod.sevenDays: return 6;
-      case TimePeriod.thirtyDays: return 29;
+      case TimePeriod.twentyFourHours: return 24;
+      case TimePeriod.sevenDays: return 7;
+      case TimePeriod.thirtyDays: return 30;
     }
   }
 
   String _getBottomLabel(double value) {
-    // Only show labels at exact integer positions
-    final intVal = value.toInt();
-    if (value != intVal.toDouble()) return '';
     switch (_selectedPeriod) {
       case TimePeriod.twentyFourHours:
-        const labels = {0: '0:00', 6: '6:00', 12: '12:00', 18: '18:00', 23: '23:00'};
-        return labels[intVal] ?? '';
-      case TimePeriod.sevenDays:
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        if (intVal >= 0 && intVal < days.length) return days[intVal];
+        // value = hours ago; show at 0, 6, 12, 18, 24
+        const hoursLabels = {0.0: 'Now', 6.0: '-6h', 12.0: '-12h', 18.0: '-18h', 24.0: '-24h'};
+        for (final entry in hoursLabels.entries) {
+          if ((value - entry.key).abs() < 0.4) return entry.value;
+        }
         return '';
+      case TimePeriod.sevenDays:
+        // value = days ago
+        if ((value - value.roundToDouble()).abs() > 0.05) return '';
+        final d = value.round();
+        if (d == 0) return 'Today';
+        if (d == 1) return '-1d';
+        if (d == 7) return '-7d';
+        return d % 2 == 0 ? '-${d}d' : '';
       case TimePeriod.thirtyDays:
-        const labels = {0: '1', 5: '6', 10: '11', 15: '16', 20: '21', 25: '26', 29: '30'};
-        return labels[intVal] ?? '';
+        if ((value - value.roundToDouble()).abs() > 0.5) return '';
+        final d = value.round();
+        if (d == 0) return 'Today';
+        if ([5, 10, 15, 20, 25, 30].contains(d)) return '-${d}d';
+        return '';
     }
   }
 
   String _getTooltipX(double value) {
-    // If we have a real timestamp for this index, show it
-    final ts = _timestampMap[value];
+    // If we have a real timestamp for this x value, show it
+    final xKey = double.parse(value.toStringAsFixed(2));
+    final ts = _timestampMap[xKey];
     if (ts != null) {
       final h = ts.hour.toString().padLeft(2, '0');
       final m = ts.minute.toString().padLeft(2, '0');
-      switch (_selectedPeriod) {
-        case TimePeriod.twentyFourHours:
-          return '$h:$m';
-        case TimePeriod.sevenDays:
-          return '${ts.month}/${ts.day} $h:$m';
-        case TimePeriod.thirtyDays:
-          return '${ts.month}/${ts.day}';
-      }
+      return '$h:$m';
     }
-    // Dummy data fallback
+    // Dummy data fallback: value = hours-ago or days-ago
     switch (_selectedPeriod) {
       case TimePeriod.twentyFourHours:
-        return '${value.toInt().toString().padLeft(2, '0')}:00';
+        return '-${value.toStringAsFixed(1)}h';
       case TimePeriod.sevenDays:
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        final idx = value.toInt();
-        return (idx >= 0 && idx < days.length) ? days[idx] : '';
+        return '-${value.toStringAsFixed(1)}d';
       case TimePeriod.thirtyDays:
-        return '${value.toInt() + 1}';
+        return '-${value.toStringAsFixed(0)}d';
     }
   }
 
@@ -1143,8 +1158,10 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
 
   LineChartData _buildChartData() {
     final spots = _spots;
-    // Use the actual last x value so the axis always covers the data range.
-    final effectiveMaxX = spots.isNotEmpty ? spots.last.x : _maxX;
+    // maxX = full period window; minX = 0 (most recent)
+    final effectiveMaxX = spots.isNotEmpty
+        ? (spots.last.x).ceilToDouble().clamp(spots.last.x, _maxX)
+        : _maxX;
     return LineChartData(
       lineBarsData: [
         LineChartBarData(
@@ -1187,7 +1204,9 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
         ),
         bottomTitles: AxisTitles(
           axisNameWidget: Text(
-            _selectedPeriod == TimePeriod.thirtyDays || _selectedPeriod == TimePeriod.sevenDays ? 'in Days' : 'in Hours',
+            _selectedPeriod == TimePeriod.thirtyDays || _selectedPeriod == TimePeriod.sevenDays
+                ? '← days ago'
+                : '← hours ago',
             style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Inter'),
           ),
           axisNameSize: 18,
