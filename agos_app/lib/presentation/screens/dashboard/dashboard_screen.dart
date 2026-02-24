@@ -8,7 +8,7 @@ import '../../../data/services/firestore_service.dart';
 import '../../widgets/notification_modal.dart';
 import '../../widgets/bottom_nav_bar.dart';
 
-enum TimePeriod { twentyFourHours, sevenDays, thirtyDays }
+enum TimePeriod { oneHour, twentyFourHours, sevenDays, thirtyDays }
 enum MetricType { turbidity, ph, tds }
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -875,7 +875,7 @@ class _HistoricalChartCard extends ConsumerStatefulWidget {
 }
 
 class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
-  TimePeriod _selectedPeriod = TimePeriod.twentyFourHours;
+  TimePeriod _selectedPeriod = TimePeriod.oneHour;
 
   // Per-metric ranges
   double get _yMin {
@@ -953,6 +953,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
 
   int get _periodHours {
     switch (_selectedPeriod) {
+      case TimePeriod.oneHour: return 1;
       case TimePeriod.twentyFourHours: return 24;
       case TimePeriod.sevenDays: return 168;
       case TimePeriod.thirtyDays: return 720;
@@ -969,8 +970,11 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   double _toX(DateTime dt) {
     final now = DateTime.now();
     final diffMs = dt.difference(now.subtract(Duration(hours: _periodHours))).inMilliseconds;
+    if (_selectedPeriod == TimePeriod.oneHour) {
+      return (diffMs / 60000.0).clamp(0, 60); // minutes within the last hour
+    }
     if (_selectedPeriod == TimePeriod.twentyFourHours) {
-      return (diffMs / 60000.0).clamp(0, 1440); // minutes
+      return (diffMs / 60000.0).clamp(0, 1440); // minutes within 24h
     }
     return (diffMs / 3600000.0).clamp(0, _periodHours.toDouble()); // hours
   }
@@ -1011,6 +1015,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   /// Full period window in the X coordinate unit.
   double get _maxX {
     switch (_selectedPeriod) {
+      case TimePeriod.oneHour: return 60;       // 60 minutes
       case TimePeriod.twentyFourHours: return 1440; // 24*60 minutes
       case TimePeriod.sevenDays: return 168;         // 7*24 hours
       case TimePeriod.thirtyDays: return 720;        // 30*24 hours
@@ -1020,6 +1025,14 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   String _getBottomLabel(double value) {
     final now = DateTime.now();
     switch (_selectedPeriod) {
+      case TimePeriod.oneHour: {
+        // x = minutes from 1h ago → show every 15 min
+        if (value % 15 > 1) return '';
+        final dt = now.subtract(Duration(minutes: (60 - value).round()));
+        final h = dt.hour.toString().padLeft(2, '0');
+        final m = dt.minute.toString().padLeft(2, '0');
+        return '$h:$m';
+      }
       case TimePeriod.twentyFourHours: {
         // x = minutes from 24h ago → show every 4 hours (every 240 min)
         if (value % 240 > 12) return '';
@@ -1052,9 +1065,13 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       final m = ts.minute.toString().padLeft(2, '0');
       return '$h:$m';
     }
-    // Dummy data fallback: reconstruct approximate time
+    // Fallback: reconstruct approximate time
     final now = DateTime.now();
     switch (_selectedPeriod) {
+      case TimePeriod.oneHour: {
+        final dt = now.subtract(Duration(minutes: (60 - value).round()));
+        return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
       case TimePeriod.twentyFourHours: {
         final dt = now.subtract(Duration(minutes: (1440 - value).round()));
         return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -1119,6 +1136,8 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
               ),
               Row(
                 children: [
+                  _buildPeriodBtn('1H', TimePeriod.oneHour),
+                  const SizedBox(width: 6),
                   _buildPeriodBtn('24H', TimePeriod.twentyFourHours),
                   const SizedBox(width: 6),
                   _buildPeriodBtn('7D', TimePeriod.sevenDays),
@@ -1255,14 +1274,20 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
         ),
         bottomTitles: AxisTitles(
           axisNameWidget: Text(
-            _selectedPeriod == TimePeriod.twentyFourHours ? 'Time of Day' : 'Date',
+            (_selectedPeriod == TimePeriod.thirtyDays || _selectedPeriod == TimePeriod.sevenDays)
+                ? 'Date'
+                : 'Time of Day',
             style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Inter'),
           ),
           axisNameSize: 18,
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 38,
-            interval: _selectedPeriod == TimePeriod.twentyFourHours ? 240 : 24, // every 4h (240min) or every day (24h)
+          interval: _selectedPeriod == TimePeriod.oneHour
+              ? 15  // every 15 min
+              : _selectedPeriod == TimePeriod.twentyFourHours
+                  ? 240   // every 4h (240min)
+                  : 24,   // every day (24h)
             getTitlesWidget: (value, meta) {
               final label = _getBottomLabel(value);
               if (label.isEmpty) return const SizedBox.shrink();
