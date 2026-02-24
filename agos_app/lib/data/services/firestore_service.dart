@@ -200,6 +200,8 @@ class FirestoreService {
   }
 
 
+  /// Sensor readings for the last [hours] hours, suitable for charts.
+  Stream<List<SensorReading>> historyStream(
     String deviceId, {
     int hours = 24,
   }) {

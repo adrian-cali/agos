@@ -910,36 +910,6 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     }
   }
 
-  static final Map<String, Map<TimePeriod, List<FlSpot>>> _dummyData = {
-    'Turbidity': {
-      // 24H: x in minutes 0..1440, 25 evenly spaced points
-      TimePeriod.twentyFourHours: List.generate(25, (i) =>
-          FlSpot(i * 60.0, (2.0 + 3.0 * math.sin(i * 0.4) + 1.0).clamp(0, 30))),
-      // 7D: x in hours 0..168
-      TimePeriod.sevenDays: List.generate(8, (i) =>
-          FlSpot(i * 24.0, (3.0 + 2.0 * math.sin(i * 0.9)).clamp(0, 30))),
-      // 30D: x in hours 0..720
-      TimePeriod.thirtyDays: List.generate(31, (i) =>
-          FlSpot(i * 24.0, (2.5 + 4.0 * math.sin(i * 0.35)).clamp(0, 30))),
-    },
-    'pH': {
-      TimePeriod.twentyFourHours: List.generate(25, (i) =>
-          FlSpot(i * 60.0, (7.0 + 0.8 * math.sin(i * 0.4)).clamp(0, 14))),
-      TimePeriod.sevenDays: List.generate(8, (i) =>
-          FlSpot(i * 24.0, (7.2 + 0.5 * math.sin(i * 0.9)).clamp(0, 14))),
-      TimePeriod.thirtyDays: List.generate(31, (i) =>
-          FlSpot(i * 24.0, (7.0 + 0.7 * math.sin(i * 0.35)).clamp(0, 14))),
-    },
-    'TDS': {
-      TimePeriod.twentyFourHours: List.generate(25, (i) =>
-          FlSpot(i * 60.0, (320.0 + 60.0 * math.sin(i * 0.4)).clamp(0, 1000))),
-      TimePeriod.sevenDays: List.generate(8, (i) =>
-          FlSpot(i * 24.0, (300.0 + 80.0 * math.sin(i * 0.9)).clamp(0, 1000))),
-      TimePeriod.thirtyDays: List.generate(31, (i) =>
-          FlSpot(i * 24.0, (310.0 + 70.0 * math.sin(i * 0.35)).clamp(0, 1000))),
-    },
-  };
-
   // ── Firestore integration ─────────────────────────────────────────────────
   static const _kDeviceId = 'esp32-sim-001';
 

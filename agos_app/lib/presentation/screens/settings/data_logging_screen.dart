@@ -277,31 +277,60 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                   children: [
                     _buildSectionHeader('LOGGING SETTING'),
                     const SizedBox(height: 16),
-                    // Logging settings cards
                     _buildCard(
                       iconData: Icons.bar_chart_outlined,
                       title: 'Automatic Logging',
                       subtitle: 'Record sensor data continuously',
-                      trailing: _buildToggle(
-                        value: _automaticLogging,
-                        onChanged: (v) {
-                          setState(() => _automaticLogging = v);
-                          _savePrefs();
-                        },
-                      ),
+                      trailing: _loadingPrefs
+                          ? const SizedBox(
+                              width: 32,
+                              height: 18,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                ),
+                              ),
+                            )
+                          : _buildToggle(
+                              value: _automaticLogging,
+                              onChanged: _savingPrefs
+                                  ? null
+                                  : (v) {
+                                      setState(() => _automaticLogging = v);
+                                      _savePrefs();
+                                    },
+                            ),
                     ),
                     const SizedBox(height: 5),
                     _buildCard(
                       iconData: Icons.cloud_outlined,
                       title: 'Cloud Sync',
                       subtitle: 'Backup data to cloud storage',
-                      trailing: _buildToggle(
-                        value: _cloudSync,
-                        onChanged: (v) {
-                          setState(() => _cloudSync = v);
-                          _savePrefs();
-                        },
-                      ),
+                      trailing: _loadingPrefs
+                          ? const SizedBox(
+                              width: 32,
+                              height: 18,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                ),
+                              ),
+                            )
+                          : _buildToggle(
+                              value: _cloudSync,
+                              onChanged: _savingPrefs
+                                  ? null
+                                  : (v) {
+                                      setState(() => _cloudSync = v);
+                                      _savePrefs();
+                                    },
+                            ),
                     ),
                     const SizedBox(height: 5),
                     _buildRetentionCard(),
@@ -532,10 +561,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   Widget _buildToggle({
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
   }) {
     return GestureDetector(
-      onTap: () => onChanged(!value),
+      onTap: onChanged == null ? null : () => onChanged(!value),
       child: Container(
         width: 32,
         height: 18,
