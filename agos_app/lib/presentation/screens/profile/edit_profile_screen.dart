@@ -1,21 +1,123 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
 
-class EditProfileScreen extends StatefulWidget {
+class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
 
   @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
+  ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _locationController = TextEditingController();
+
+  bool _isLoading = false;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadProfile());
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      _emailController.text = user.email ?? '';
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (!mounted) return;
+      if (doc.exists) {
+        final data = doc.data()!;
+        final name = (data['name'] as String?) ?? '';
+        final spaceIdx = name.indexOf(' ');
+        if (spaceIdx >= 0) {
+          _firstNameController.text = name.substring(0, spaceIdx);
+          _lastNameController.text = name.substring(spaceIdx + 1);
+        } else {
+          _firstNameController.text = name;
+        }
+        _phoneController.text = (data['phone'] as String?) ?? '';
+        _locationController.text = (data['location'] as String?) ?? '';
+      }
+    } catch (e) {
+      debugPrint('EditProfile load error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) return null; // read-only, skip
+    final emailRegex = RegExp(r'^[\w.+\-]+@[a-zA-Z\d\-]+\.[a-zA-Z\d.\-]+$');
+    if (!emailRegex.hasMatch(value.trim())) return 'Enter a valid email address';
+    return null;
+  }
+
+  String? _validatePhone(String? value) {
+    if (value == null || value.trim().isEmpty) return null; // optional
+    final phoneRegex = RegExp(r'^(\+63\s?|0)9\d{2}[\s\-]?\d{3}[\s\-]?\d{4}$');
+    if (!phoneRegex.hasMatch(value.trim())) {
+      return 'Enter a valid PH number (e.g. 0912 345 6789)';
+    }
+    return null;
+  }
+
+  Future<void> _saveProfile() async {    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Not signed in');
+      final name =
+          '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'name': name,
+        'phone': _phoneController.text.trim(),
+        'location': _locationController.text.trim(),
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Profile updated!'),
+          backgroundColor: const Color(0xFF00D3F2),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -27,30 +129,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Email address is required';
-    }
-    final emailRegex = RegExp(r'^[\w.+\-]+@[a-zA-Z\d\-]+\.[a-zA-Z\d.\-]+$');
-    if (!emailRegex.hasMatch(value.trim())) {
-      return 'Enter a valid email address';
-    }
-    return null;
-  }
-
-  String? _validatePhone(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Phone number is required';
-    }
-    final phoneRegex = RegExp(r'^(\+63\s?|0)9\d{2}[\s\-]?\d{3}[\s\-]?\d{4}$');
-    if (!phoneRegex.hasMatch(value.trim())) {
-      return 'Enter a valid PH number (e.g. +63 912 345 6789)';
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF4F8FB),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF00B8DB)),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
@@ -133,6 +221,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
                         validator: _validateEmail,
+                        readOnly: true,
+                        subtitle: 'To change your email, contact support.',
                       ),
                       const SizedBox(height: 16),
                       _buildField(
@@ -158,38 +248,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       width: double.infinity,
                       height: 46,
                       child: GestureDetector(
-                        onTap: () {
-                          if (_formKey.currentState!.validate()) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text('Profile updated!'),
-                                backgroundColor: const Color(0xFF00D3F2),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8)),
-                              ),
-                            );
-                            Navigator.pop(context);
-                          }
-                        },
+                        onTap: _isSaving ? null : _saveProfile,
                         child: Container(
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFF00B8DB),
-                                Color(0xFF155DFC),
-                              ],
+                            gradient: LinearGradient(
+                              colors: _isSaving
+                                  ? [const Color(0xFF90CAF9), const Color(0xFF90CAF9)]
+                                  : [const Color(0xFF00B8DB), const Color(0xFF155DFC)],
                             ),
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.save_outlined,
                                   color: Colors.white, size: 16),
                               SizedBox(width: 8),
                               Text(
-                                'Save Changes',
+                                _isSaving ? 'Saving…' : 'Save Changes',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 14,
@@ -261,8 +337,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     String? hint,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    bool readOnly = false,
+    String? subtitle,
   }) {
     String? composedValidator(String? value) {
+      if (readOnly) return null;
       if (value == null || value.trim().isEmpty) {
         return '$label is required';
       }
@@ -292,6 +371,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           controller: controller,
           keyboardType: keyboardType,
           validator: composedValidator,
+          readOnly: readOnly,
           autovalidateMode: AutovalidateMode.onUserInteraction,
           cursorColor: const Color(0xFF0A1929),
           cursorErrorColor: const Color(0xFF0A1929),
@@ -305,7 +385,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: readOnly ? const Color(0xFFF1F5F9) : Colors.white,
             hintText: hint,
             hintStyle: const TextStyle(
               fontFamily: 'Inter',
@@ -339,6 +419,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ),
         ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11,
+              color: Color(0xFF90A1B9),
+            ),
+          ),
+        ],
       ],
     );
   }
