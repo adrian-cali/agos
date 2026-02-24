@@ -116,6 +116,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   Color _statusColor(String status) {
     if (status.contains('Warning')) return const Color(0xFFF59E0B);
     if (status.contains('Critical')) return const Color(0xFFEF4444);
+    if (status == '● --') return const Color(0xFFB0BEC5); // no data → grey
     return const Color(0xFF009966);
   }
 
@@ -134,9 +135,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final phStr         = reading != null ? phVal.toStringAsFixed(1) : '--';
     final tdsStr        = reading != null ? '${tdsVal.toStringAsFixed(0)} ppm' : '-- ppm';
 
-    final turbidityStatus = _qualityStatus(turbidityVal, 'turbidity');
-    final phStatus        = _qualityStatus(phVal, 'ph');
-    final tdsStatus       = _qualityStatus(tdsVal, 'tds');
+    final turbidityStatus = reading != null ? _qualityStatus(turbidityVal, 'turbidity') : '● --';
+    final phStatus        = reading != null ? _qualityStatus(phVal, 'ph') : '● --';
+    final tdsStatus       = reading != null ? _qualityStatus(tdsVal, 'tds') : '● --';
 
     final turbidityProgress = (turbidityVal / 20.0).clamp(0.0, 1.0);
     final phProgress        = (phVal / 14.0).clamp(0.0, 1.0);
