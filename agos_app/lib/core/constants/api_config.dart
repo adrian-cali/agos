@@ -1,14 +1,10 @@
-import 'dart:io' show Platform;
-
 class ApiConfig {
   ApiConfig._();
 
-  // On Android emulator, 10.0.2.2 maps to host machine's localhost
-  // On desktop/other platforms, use localhost directly
+  // For physical Android devices connected via ADB, use 'adb reverse tcp:8000 tcp:8000'
+  // then the device can reach the host machine via localhost/127.0.0.1.
+  // For Android emulators, 10.0.2.2 maps to host localhost — change back if needed.
   static String get host {
-    try {
-      if (Platform.isAndroid) return '10.0.2.2';
-    } catch (_) {}
     return 'localhost';
   }
 
