@@ -115,6 +115,22 @@ def generate_historical_data():
 # Generate historical data on startup
 generate_historical_data()
 
+# ============= FIRESTORE WRITE THROTTLE =============
+# Only write to Firestore once every FIRESTORE_WRITE_INTERVAL_S seconds per device.
+# Free-tier quota: 20,000 writes/day (~13/min). At 30 s interval we use ~2,880/day.
+FIRESTORE_WRITE_INTERVAL_S = 30
+_last_firestore_write: dict[str, datetime] = {}   # device_id → last write time
+
+
+def _should_write_firestore(device_id: str) -> bool:
+    """Return True if enough time has passed since the last Firestore write for this device."""
+    last = _last_firestore_write.get(device_id)
+    if last is None or (datetime.now() - last).total_seconds() >= FIRESTORE_WRITE_INTERVAL_S:
+        _last_firestore_write[device_id] = datetime.now()
+        return True
+    return False
+
+
 # ============= CONNECTION MANAGER =============
 
 
@@ -242,8 +258,8 @@ async def handle_sensor_data(data: dict):
             "alert": alert
         })
 
-    # Firestore write
-    if FIREBASE_ENABLED and db is not None:
+    # Firestore write (throttled — at most once every FIRESTORE_WRITE_INTERVAL_S seconds)
+    if FIREBASE_ENABLED and db is not None and _should_write_firestore(device_id):
         try:
             reading_doc = {
                 "device_id": device_id,

@@ -75,7 +75,7 @@ async def send_sensor_data():
                     except asyncio.TimeoutError:
                         pass
 
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(5)  # 5 s interval → ~12 readings/min
 
         except Exception as e:
             print(f"[{DEVICE_ID}] Error: {e}. Reconnecting in 5 s...")
