@@ -32,6 +32,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       duration: const Duration(milliseconds: 600),
       vsync: this,
     )..forward();
+
+    // Connect WebSocket so tankDataProvider and waterQualityProvider get live data.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        ref.read(webSocketServiceProvider).connect();
+      } catch (_) {}
+    });
   }
 
   @override

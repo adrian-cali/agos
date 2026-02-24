@@ -91,8 +91,58 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     super.dispose();
   }
 
+  // ── helpers ──────────────────────────────────────────────────────────────
+  static const _kDeviceId = 'esp32-sim-001';
+
+  String _qualityStatus(double value, String metric) {
+    switch (metric) {
+      case 'turbidity':
+        if (value < 20) return '● Optimal';
+        if (value < 50) return '● Warning';
+        return '● Critical';
+      case 'ph':
+        if (value >= 6.5 && value <= 8.5) return '● Optimal';
+        if (value >= 5.5 && value <= 9.5) return '● Warning';
+        return '● Critical';
+      case 'tds':
+        if (value < 500) return '● Optimal';
+        if (value < 1000) return '● Warning';
+        return '● Critical';
+      default:
+        return '● Unknown';
+    }
+  }
+
+  Color _statusColor(String status) {
+    if (status.contains('Warning')) return const Color(0xFFF59E0B);
+    if (status.contains('Critical')) return const Color(0xFFEF4444);
+    return const Color(0xFF009966);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // ── Live Firestore sensor data ─────────────────────────────────────────
+    final latestAsync = ref.watch(latestReadingProvider(_kDeviceId));
+    final reading = latestAsync.valueOrNull;
+
+    final turbidityVal  = reading?.turbidity ?? 0.0;
+    final phVal         = reading?.ph ?? 0.0;
+    final tdsVal        = reading?.tds ?? 0.0;
+
+    final turbidityStr  = reading != null ? '${turbidityVal.toStringAsFixed(1)} NTU' : '-- NTU';
+    final phStr         = reading != null ? phVal.toStringAsFixed(1) : '--';
+    final tdsStr        = reading != null ? '${tdsVal.toStringAsFixed(0)} ppm' : '-- ppm';
+
+    final turbidityStatus = _qualityStatus(turbidityVal, 'turbidity');
+    final phStatus        = _qualityStatus(phVal, 'ph');
+    final tdsStatus       = _qualityStatus(tdsVal, 'tds');
+
+    final turbidityProgress = (turbidityVal / 20.0).clamp(0.0, 1.0);
+    final phProgress        = (phVal / 14.0).clamp(0.0, 1.0);
+    final tdsProgress       = (tdsVal / 500.0).clamp(0.0, 1.0);
+    // ──────────────────────────────────────────────────────────────────────
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
@@ -122,38 +172,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           children: [
                             _buildMetricCard(
                               'Turbidity',
-                              '13.1 NTU',
-                              '● Optimal',
-                              0.65,
+                              turbidityStr,
+                              turbidityStatus,
+                              turbidityProgress,
                               'Target: < 20 NTU',
                               const LinearGradient(
                                 colors: [Color(0xFF00D3F2), Color(0xFF2B7FFF)],
                               ),
                               0.0,
+                              statusColor: _statusColor(turbidityStatus),
                             ),
                             const SizedBox(height: 16),
                             _buildMetricCard(
                               'pH Level',
-                              '7.4',
-                              '● Optimal',
-                              0.74,
+                              phStr,
+                              phStatus,
+                              phProgress,
                               'Target: 6.5 - 8.5',
                               const LinearGradient(
                                 colors: [Color(0xFFC27AFF), Color(0xFFF6339A)],
                               ),
                               0.3,
+                              statusColor: _statusColor(phStatus),
                             ),
                             const SizedBox(height: 16),
                             _buildMetricCard(
                               'Total Dissolved Solids',
-                              '347 ppm',
-                              '● Optimal',
-                              0.69,
+                              tdsStr,
+                              tdsStatus,
+                              tdsProgress,
                               'Target: < 500 ppm',
                               const LinearGradient(
                                 colors: [Color(0xFF7C86FF), Color(0xFF2B7FFF)],
                               ),
                               0.6,
+                              statusColor: _statusColor(tdsStatus),
                             ),
                             const SizedBox(height: 25),
                             _buildSectionTitle('Historical Trends'),
@@ -542,8 +595,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     double progress,
     String target,
     LinearGradient iconGradient,
-    double animationDelay,
-  ) {
+    double animationDelay, {
+    Color statusColor = const Color(0xFF009966),
+  }) {
     final animation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _cardController,
@@ -640,7 +694,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         Text(
                           status,
                           style: TextStyle(
-                            color: const Color(0xFF009966),
+                            color: statusColor,
                             fontSize: 12,
                             fontFamily: 'Inter',
                             fontWeight: FontWeight.w400,
