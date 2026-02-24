@@ -78,6 +78,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final tankData = ref.watch(tankDataProvider);
+    // Firestore fallback when WebSocket isn't connected
+    const deviceId = 'esp32-sim-001';
+    final latestAsync = ref.watch(latestReadingProvider(deviceId));
+    final latest = latestAsync.valueOrNull;
+
+    // Merge: prefer WebSocket live data, fall back to Firestore
+    final effectiveTank = (tankData.level > 0 || latest == null)
+        ? tankData
+        : TankData(
+            level: latest.level,
+            volume: latest.volume,
+            capacity: tankData.capacity,
+            flowRate: latest.flowRate,
+            status: latest.status,
+            timestamp: latest.timestamp.toIso8601String(),
+          );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
@@ -97,7 +113,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     _buildAnimated(0, _buildSavingsCard()),
                     const SizedBox(height: 25),
                     // Main Water Tank card
-                    _buildAnimated(1, _buildWaterTankCard(tankData)),
+                    _buildAnimated(1, _buildWaterTankCard(effectiveTank)),
                     const SizedBox(height: 25),
                     // AGOS logo at bottom
                     _buildAnimated(2, _buildBottomLogo()),
