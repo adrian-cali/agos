@@ -975,6 +975,8 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     return (diffMs / 3600000.0).clamp(0, _periodHours.toDouble()); // hours
   }
 
+  bool _hasLiveData = false;
+
   /// Returns live Firestore spots, or falls back to dummy data when empty.
   List<FlSpot> get _spots {
     final historyAsync = ref.watch(
@@ -983,8 +985,10 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     final readings = historyAsync.valueOrNull ?? [];
     if (readings.isEmpty) {
       _timestampMap.clear();
-      return _dummyData[widget.label]?[_selectedPeriod] ?? [];
+      _hasLiveData = false;
+      return []; // return empty — chart will show empty state
     }
+    _hasLiveData = true;
     _timestampMap.clear();
     final List<FlSpot> result = [];
     for (final r in readings) {
@@ -1000,7 +1004,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       result.add(FlSpot(x, value));
     }
     result.sort((a, b) => a.x.compareTo(b.x)); // oldest first (left edge)
-    if (result.isEmpty) return _dummyData[widget.label]?[_selectedPeriod] ?? [];
+    if (result.isEmpty) return [];
     return result;
   }
 
@@ -1125,13 +1129,47 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 200,
-            child: LineChart(
-              _buildChartData(),
-              duration: const Duration(milliseconds: 300),
-            ),
-          ),
+          Builder(builder: (_) {
+            final spots = _spots; // triggers provider watch & sets _hasLiveData
+            if (!_hasLiveData) {
+              return SizedBox(
+                height: 200,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.show_chart_rounded,
+                        size: 40, color: const Color(0xFFCFD8DC)),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No historical data yet',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF90A4AE),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Data will appear as readings accumulate',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: Color(0xFFB0BEC5),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return SizedBox(
+              height: 200,
+              child: LineChart(
+                _buildChartData(spots),
+                duration: const Duration(milliseconds: 300),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -1168,9 +1206,8 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     );
   }
 
-  LineChartData _buildChartData() {
-    final spots = _spots;
-    // maxX = full period window; minX = 0 (most recent)
+  LineChartData _buildChartData(List<FlSpot> spots) {
+    // maxX = full period window; effectiveMaxX never exceeds _maxX
     final effectiveMaxX = spots.isNotEmpty
         ? (spots.last.x).ceilToDouble().clamp(spots.last.x, _maxX)
         : _maxX;
