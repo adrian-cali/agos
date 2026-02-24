@@ -23,7 +23,8 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   bool _cloudSync = false;
   int _retentionDays = 30; // 7, 30, or 90
 
-  bool _loadingPrefs = true;
+  // Don't show loading state — show defaults immediately, update silently
+  bool _loadingPrefs = false;
   bool _exportingCsv = false;
   bool _exportingJson = false;
   bool _exportingPdf = false;
