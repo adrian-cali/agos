@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'websocket_service.dart'
+    show AlertItem; // AlertItem defined there; reuse the model
 
 // ============= Models =============
 
@@ -195,4 +197,97 @@ final userProfileProvider = StreamProvider<UserProfile?>((ref) {
   if (user == null) return Stream.value(null);
   final service = ref.watch(firestoreServiceProvider);
   return service.userProfileStream(user.uid);
+});
+
+// ============= Alert helpers =============
+
+/// Converts recent SensorReadings into AlertItems based on threshold rules.
+/// This lets the notifications screen show historical alerts even when the
+/// WebSocket is offline or a fresh session just started.
+List<AlertItem> _alertsFromReadings(List<SensorReading> readings) {
+  final alerts = <AlertItem>[];
+  for (final r in readings) {
+    final id = '${r.deviceId}_${r.timestamp.millisecondsSinceEpoch}';
+    final ts = r.timestamp.toIso8601String();
+
+    if (r.turbidity > 10) {
+      alerts.add(AlertItem(
+        id: '${id}_turbidity',
+        type: 'water_quality',
+        title: 'High Turbidity Detected',
+        description:
+            'Turbidity is ${r.turbidity.toStringAsFixed(1)} NTU — exceeds 10 NTU limit.',
+        timestamp: ts,
+        severity: r.turbidity > 15 ? 'critical' : 'warning',
+      ));
+    }
+
+    if (r.ph < 6.5 || r.ph > 8.5) {
+      final low = r.ph < 6.5;
+      alerts.add(AlertItem(
+        id: '${id}_ph',
+        type: 'water_quality',
+        title: low ? 'pH Too Low' : 'pH Too High',
+        description:
+            'pH level is ${r.ph.toStringAsFixed(1)} — outside safe range 6.5–8.5.',
+        timestamp: ts,
+        severity: (r.ph < 5.5 || r.ph > 9.0) ? 'critical' : 'warning',
+      ));
+    }
+
+    if (r.tds > 400) {
+      alerts.add(AlertItem(
+        id: '${id}_tds',
+        type: 'water_quality',
+        title: 'High TDS Detected',
+        description:
+            'TDS is ${r.tds.toStringAsFixed(0)} ppm — exceeds 400 ppm limit.',
+        timestamp: ts,
+        severity: r.tds > 450 ? 'critical' : 'warning',
+      ));
+    }
+
+    if (r.level < 20) {
+      alerts.add(AlertItem(
+        id: '${id}_level',
+        type: 'system',
+        title: 'Low Water Level',
+        description:
+            'Tank level is ${r.level.toStringAsFixed(0)}% — consider refilling.',
+        timestamp: ts,
+        severity: r.level < 10 ? 'critical' : 'warning',
+      ));
+    }
+
+    if (r.pumpActive) {
+      alerts.add(AlertItem(
+        id: '${id}_pump',
+        type: 'system',
+        title: 'Pump Activated',
+        description: 'Automatic pump turned on at ${_fmtDt(r.timestamp)}.',
+        timestamp: ts,
+        severity: 'info',
+      ));
+    }
+  }
+
+  // Sort newest-first
+  alerts.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  return alerts;
+}
+
+String _fmtDt(DateTime dt) {
+  final h = dt.hour.toString().padLeft(2, '0');
+  final m = dt.minute.toString().padLeft(2, '0');
+  return '$h:$m';
+}
+
+/// Stream of [AlertItem]s derived from the last 50 Firestore readings.
+/// deviceId defaults to 'esp32-sim-001'.
+final firestoreAlertsProvider =
+    StreamProvider.family<List<AlertItem>, String>((ref, deviceId) {
+  final service = ref.watch(firestoreServiceProvider);
+  return service
+      .latestReadingsStream(deviceId, limit: 50)
+      .map(_alertsFromReadings);
 });
