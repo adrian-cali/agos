@@ -136,7 +136,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
+          Flexible(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -156,6 +157,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   final name = profileAsync.valueOrNull?.name.toUpperCase() ?? '';
                   return Text(
                     name.isEmpty ? '...' : name,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: const Color(0xFF141A1E),
                       fontSize: 20,
@@ -166,6 +168,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 },
               ),
             ],
+          ),
           ),
           // Notification icon with red dot
           GestureDetector(
