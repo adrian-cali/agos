@@ -34,18 +34,21 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPrefs();
+    // Defer prefs load to first frame so providers are fully initialized
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
   }
 
   Future<void> _loadPrefs() async {
     final user = ref.read(currentUserProvider);
     if (user == null) {
-      setState(() => _loadingPrefs = false);
+      if (mounted) setState(() => _loadingPrefs = false);
       return;
     }
     try {
       final service = ref.read(firestoreServiceProvider);
-      final prefs = await service.loadDataLoggingPrefs(user.uid);
+      final prefs = await service
+          .loadDataLoggingPrefs(user.uid)
+          .timeout(const Duration(seconds: 5));
       if (mounted) {
         setState(() {
           _automaticLogging = prefs['automaticLogging'] as bool? ?? true;
