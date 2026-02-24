@@ -980,12 +980,17 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   }
 
   bool _hasLiveData = false;
+  String? _dataError;
 
-  /// Returns live Firestore spots, or falls back to dummy data when empty.
-  List<FlSpot> get _spots {
-    final historyAsync = ref.watch(
-      readingHistoryProvider((_kDeviceId, _periodHours)),
-    );
+  /// Returns live Firestore spots. Sets _hasLiveData and _dataError as side effects.
+  List<FlSpot> _buildSpots(AsyncValue<List<SensorReading>> historyAsync) {
+    if (historyAsync.hasError) {
+      _timestampMap.clear();
+      _hasLiveData = false;
+      _dataError = historyAsync.error.toString();
+      return [];
+    }
+    _dataError = null;
     final readings = historyAsync.valueOrNull ?? [];
     if (readings.isEmpty) {
       _timestampMap.clear();
@@ -1008,7 +1013,6 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       result.add(FlSpot(x, value));
     }
     result.sort((a, b) => a.x.compareTo(b.x)); // oldest first (left edge)
-    if (result.isEmpty) return [];
     return result;
   }
 
@@ -1149,7 +1153,55 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           ),
           const SizedBox(height: 16),
           Builder(builder: (_) {
-            final spots = _spots; // triggers provider watch & sets _hasLiveData
+            final historyAsync = ref.watch(
+              readingHistoryProvider((_kDeviceId, _periodHours)),
+            );
+            // Show loading spinner while waiting for first snapshot
+            if (historyAsync.isLoading) {
+              return const SizedBox(
+                height: 200,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
+            final spots = _buildSpots(historyAsync);
+            if (_dataError != null) {
+              return SizedBox(
+                height: 200,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          size: 36, color: Color(0xFFEF9A9A)),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Could not load data',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFFB0BEC5),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _dataError!,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 10,
+                          color: Color(0xFFCFD8DC),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
             if (!_hasLiveData) {
               return SizedBox(
                 height: 200,
