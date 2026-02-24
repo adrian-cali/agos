@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -41,7 +42,17 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(seconds: 6),
     )..repeat();
 
-    // Removed auto-navigate timer
+    // Auto-navigate after 2.5 seconds based on Firebase auth state
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      _navigateBasedOnAuth();
+    });
+  }
+
+  void _navigateBasedOnAuth() {
+    final user = FirebaseAuth.instance.currentUser;
+    final route = user != null ? '/home' : '/login';
+    Navigator.pushReplacementNamed(context, route);
   }
 
   @override
@@ -55,9 +66,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        Navigator.pushReplacementNamed(context, '/welcome');
-      },
+      onTap: () => _navigateBasedOnAuth(),
       child: Scaffold(
         body: Container(
           width: double.infinity,
