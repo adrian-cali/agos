@@ -974,7 +974,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     _timestampMap.clear();
     final List<FlSpot> result = [];
     for (final r in readings) {
-      final dt = r.timestamp.toDate();
+      final dt = r.timestamp;
       final diffMinutes = now.difference(dt).inMinutes;
       if (diffMinutes < 0) continue;
       // X = hours ago for 24H; days ago for 7D/30D (as fraction)
@@ -1012,7 +1012,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     switch (_selectedPeriod) {
       case TimePeriod.twentyFourHours:
         // value = hours ago; show at 0, 6, 12, 18, 24
-        const hoursLabels = {0.0: 'Now', 6.0: '-6h', 12.0: '-12h', 18.0: '-18h', 24.0: '-24h'};
+        final hoursLabels = {0.0: 'Now', 6.0: '-6h', 12.0: '-12h', 18.0: '-18h', 24.0: '-24h'};
         for (final entry in hoursLabels.entries) {
           if ((value - entry.key).abs() < 0.4) return entry.value;
         }
