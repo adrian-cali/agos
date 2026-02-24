@@ -127,17 +127,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final latestAsync = ref.watch(latestReadingProvider(_kDeviceId));
     final reading = latestAsync.valueOrNull;
 
-    final turbidityVal  = reading?.turbidity ?? 0.0;
-    final phVal         = reading?.ph ?? 0.0;
-    final tdsVal        = reading?.tds ?? 0.0;
+    // ── WebSocket fallback (for Windows where Firestore threading may drop data)
+    final waterQuality = ref.watch(waterQualityProvider);
+    final wsHasQuality = waterQuality.turbidity.value > 0 ||
+        waterQuality.ph.value > 0 ||
+        waterQuality.tds.value > 0;
 
-    final turbidityStr  = reading != null ? '${turbidityVal.toStringAsFixed(1)} NTU' : '-- NTU';
-    final phStr         = reading != null ? phVal.toStringAsFixed(1) : '--';
-    final tdsStr        = reading != null ? '${tdsVal.toStringAsFixed(0)} ppm' : '-- ppm';
+    // Prefer Firestore reading; fall back to WebSocket if Firestore is null
+    final hasData = reading != null || wsHasQuality;
+    final turbidityVal = reading?.turbidity ??
+        (wsHasQuality ? waterQuality.turbidity.value : 0.0);
+    final phVal =
+        reading?.ph ?? (wsHasQuality ? waterQuality.ph.value : 0.0);
+    final tdsVal =
+        reading?.tds ?? (wsHasQuality ? waterQuality.tds.value : 0.0);
 
-    final turbidityStatus = reading != null ? _qualityStatus(turbidityVal, 'turbidity') : '● --';
-    final phStatus        = reading != null ? _qualityStatus(phVal, 'ph') : '● --';
-    final tdsStatus       = reading != null ? _qualityStatus(tdsVal, 'tds') : '● --';
+    final turbidityStr  = hasData ? '${turbidityVal.toStringAsFixed(1)} NTU' : '-- NTU';
+    final phStr         = hasData ? phVal.toStringAsFixed(1) : '--';
+    final tdsStr        = hasData ? '${tdsVal.toStringAsFixed(0)} ppm' : '-- ppm';
+
+    final turbidityStatus = hasData ? _qualityStatus(turbidityVal, 'turbidity') : '● --';
+    final phStatus        = hasData ? _qualityStatus(phVal, 'ph') : '● --';
+    final tdsStatus       = hasData ? _qualityStatus(tdsVal, 'tds') : '● --';
 
     final turbidityProgress = (turbidityVal / 20.0).clamp(0.0, 1.0);
     final phProgress        = (phVal / 14.0).clamp(0.0, 1.0);
