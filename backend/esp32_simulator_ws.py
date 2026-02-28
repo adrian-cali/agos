@@ -5,11 +5,15 @@ import random
 from datetime import datetime
 
 WS_URL = "ws://localhost:8000/ws/sensor"
-DEVICE_ID = "esp32-sim-001"
+DEVICE_ID = "agos-zksl9QK3"  # Adrian Calingasin's device ID (matches Firestore)
 
 # bad-water spike state
 _spike_counter = 0  # increments every reading (5 s each); spike every ~60 readings (~5 min)
 _SPIKE_INTERVAL = 60
+
+# Simulated pump state (overridden by pump_command from the backend)
+_pump_manual_on = False
+_pump_manual_remaining = 0  # seconds remaining in manual mode
 
 
 def generate_sensor_data(spike: bool = False) -> dict:
@@ -22,7 +26,9 @@ def generate_sensor_data(spike: bool = False) -> dict:
         ph = random.uniform(6.8, 7.8)
         tds = random.uniform(200, 450)
 
-    pump_active = turbidity > 5 or not (6.5 <= ph <= 8.3) or tds > 500
+    # Auto pump logic (only active when not in manual mode)
+    auto_pump = turbidity > 5 or not (6.5 <= ph <= 8.3) or tds > 500
+    pump_active = _pump_manual_on or auto_pump
 
     return {
         "type": "sensor_data",
@@ -41,7 +47,7 @@ def generate_sensor_data(spike: bool = False) -> dict:
 
 
 async def send_sensor_data():
-    global _spike_counter
+    global _spike_counter, _pump_manual_on, _pump_manual_remaining
 
     while True:
         try:
@@ -51,10 +57,20 @@ async def send_sensor_data():
                 while True:
                     _spike_counter += 1
                     spike = (_spike_counter % _SPIKE_INTERVAL == 0)
+
+                    # Decrement manual pump countdown
+                    if _pump_manual_on and _pump_manual_remaining > 0:
+                        _pump_manual_remaining -= 5  # 5 s per loop
+                        if _pump_manual_remaining <= 0:
+                            _pump_manual_remaining = 0
+                            _pump_manual_on = False
+                            print(f"[{DEVICE_ID}] Manual pump timer expired → auto mode")
+
                     data = generate_sensor_data(spike=spike)
                     await websocket.send(json.dumps(data))
 
-                    pump_str = "PUMP:ON " if data["pump_active"] else "PUMP:OFF"
+                    pump_str = "PUMP:ON (manual)" if _pump_manual_on else \
+                               ("PUMP:ON (auto)" if data["pump_active"] else "PUMP:OFF")
                     spike_str = " *** BAD WATER SPIKE ***" if spike else ""
                     print(
                         f"[{datetime.now().strftime('%H:%M:%S')}] "
@@ -65,13 +81,43 @@ async def send_sensor_data():
                         f"{pump_str}{spike_str}"
                     )
 
-                    # Listen briefly for pump commands from backend
+                    # Listen briefly for commands forwarded from backend (pump_command, etc.)
                     try:
                         msg = await asyncio.wait_for(websocket.recv(), timeout=4.5)
                         cmd = json.loads(msg)
                         if cmd.get("type") == "pump_command":
-                            action = cmd.get("command", "")
-                            print(f"[{DEVICE_ID}] Received pump command: {action.upper()}")
+                            action = cmd.get("action", "off")  # "on" or "off"
+                            duration = int(cmd.get("duration_seconds", 0))
+                            if action == "on":
+                                _pump_manual_on = True
+                                _pump_manual_remaining = duration
+                                print(
+                                    f"[{DEVICE_ID}] ▶ PUMP ON (manual, {duration}s)"
+                                )
+                            else:
+                                _pump_manual_on = False
+                                _pump_manual_remaining = 0
+                                print(f"[{DEVICE_ID}] ■ PUMP OFF (manual command)")
+
+                            # Echo back pump_update so the app can confirm
+                            ack = {
+                                "type": "sensor_data",
+                                "device_id": DEVICE_ID,
+                                "pump_active": _pump_manual_on,
+                                "pump_manual": _pump_manual_on,
+                                "pump_remaining": _pump_manual_remaining,
+                                # Re-send last known values so state doesn't reset
+                                "level": data["level"],
+                                "volume": data["volume"],
+                                "capacity": 50000,
+                                "flow_rate": data["flow_rate"],
+                                "turbidity": data["turbidity"],
+                                "ph": data["ph"],
+                                "tds": data["tds"],
+                                "temperature": data["temperature"],
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                            await websocket.send(json.dumps(ack))
                     except asyncio.TimeoutError:
                         pass
 

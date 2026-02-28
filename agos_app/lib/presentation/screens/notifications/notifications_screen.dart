@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/websocket_service.dart';
 import '../../../data/services/firestore_service.dart'
-    show firestoreAlertsProvider;
+    show firestoreAlertsProvider, linkedDeviceIdProvider;
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -39,7 +39,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
     final wsAlerts = ref.watch(alertsProvider);
 
     // Historical alerts derived from Firestore sensor readings
-    const deviceId = 'esp32-sim-001';
+    final deviceId =
+        ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
     final fsAlertsAsync = ref.watch(firestoreAlertsProvider(deviceId));
     final fsAlerts = fsAlertsAsync.valueOrNull ?? [];
 

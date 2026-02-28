@@ -30,7 +30,8 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   bool _exportingPdf = false;
   bool _savingPrefs = false;
 
-  static const _kDeviceId = 'esp32-sim-001';
+  String get _deviceId =>
+      ref.read(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
 
   @override
   void initState() {
@@ -65,7 +66,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   Future<List<SensorReading>> _fetchReadings() async {
     final service = ref.read(firestoreServiceProvider);
-    return service.fetchReadings(_kDeviceId, days: _retentionDays);
+    return service.fetchReadings(_deviceId, days: _retentionDays);
   }
 
   Future<void> _exportCsv() async {
@@ -142,7 +143,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
           pw.Paragraph(
               text:
                   'Generated: ${now.year}-${_pad(now.month)}-${_pad(now.day)} ${_pad(now.hour)}:${_pad(now.minute)}'),
-          pw.Paragraph(text: 'Device: $_kDeviceId'),
+          pw.Paragraph(text: 'Device: $_deviceId'),
           pw.Paragraph(
               text: 'Period: last $_retentionDays days | Readings: ${readings.length}'),
           pw.SizedBox(height: 12),

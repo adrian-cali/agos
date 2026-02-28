@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:async';
 import 'dart:math' as math;
 import '../../../data/services/websocket_service.dart';
 import '../../../data/services/firestore_service.dart';
@@ -19,6 +20,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   late AnimationController _waveController;
   late Animation<double> _waveAnimation;
   late AnimationController _pageController;
+
+  // Pump card local state
+  Timer? _pumpCountdownTimer;
+  int _pumpRemainingSeconds = 0;
+  bool _pumpManualOn = false;
+  int _selectedPumpDuration = 10; // default 10 minutes
 
   @override
   void initState() {
@@ -45,6 +52,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   void dispose() {
     _waveController.dispose();
     _pageController.dispose();
+    _pumpCountdownTimer?.cancel();
     super.dispose();
   }
 
@@ -78,8 +86,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final tankData = ref.watch(tankDataProvider);
-    // Firestore fallback when WebSocket isn't connected
-    const deviceId = 'esp32-sim-001';
+    // Use the real device ID from Firestore; fall back to simulator ID during dev
+    final deviceIdAsync = ref.watch(linkedDeviceIdProvider);
+    final deviceId = deviceIdAsync.valueOrNull ?? 'esp32-sim-001';
     final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final latest = latestAsync.valueOrNull;
 
@@ -115,8 +124,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     // Main Water Tank card
                     _buildAnimated(1, _buildWaterTankCard(effectiveTank)),
                     const SizedBox(height: 25),
+                    // Pump Control card
+                    _buildAnimated(2, _buildPumpCard()),
+                    const SizedBox(height: 25),
                     // AGOS logo at bottom
-                    _buildAnimated(2, _buildBottomLogo()),
+                    _buildAnimated(3, _buildBottomLogo()),
                     const SizedBox(height: 100), // Space for bottom nav
                   ],
                 ),
@@ -856,6 +868,420 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
+  // ─── Pump Control Card ───────────────────────────────────────────────────
+
+  void _startPumpTimer(int durationSeconds) {
+    _pumpCountdownTimer?.cancel();
+    setState(() {
+      _pumpManualOn = true;
+      _pumpRemainingSeconds = durationSeconds;
+    });
+    _pumpCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_pumpRemainingSeconds > 0) {
+          _pumpRemainingSeconds--;
+        } else {
+          // Timer expired → send off command and reset to auto mode
+          _stopPump(expired: true);
+          timer.cancel();
+        }
+      });
+    });
+
+    // Send pump ON command with duration
+    try {
+      ref.read(webSocketServiceProvider).sendPumpCommand(
+        on: true,
+        durationSeconds: durationSeconds,
+      );
+    } catch (_) {}
+  }
+
+  void _stopPump({bool expired = false}) {
+    _pumpCountdownTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _pumpManualOn = false;
+        _pumpRemainingSeconds = 0;
+      });
+    }
+    // Send pump OFF command
+    try {
+      ref.read(webSocketServiceProvider).sendPumpCommand(on: false);
+    } catch (_) {}
+  }
+
+  String _formatCountdown(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildPumpCard() {
+    final durations = [5, 10, 15, 30]; // minutes
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──────────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
+                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
+                    ],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.water_outlined,
+                  color: Color(0xFF00D3F2),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pump Control',
+                      style: TextStyle(
+                        color: const Color(0xFF2C3E50),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    Text(
+                      'Manual pump operation',
+                      style: TextStyle(
+                        color: const Color(0xFF7F8C8D),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Status badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(
+                    color: _pumpManualOn
+                        ? const Color(0xFF00B8DB)
+                        : const Color(0xFF7F8C8D),
+                    width: 0.8,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: _pumpManualOn
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF00B8DB).withValues(alpha: 0.32),
+                            blurRadius: 11,
+                            offset: const Offset(0, 0),
+                          ),
+                        ]
+                      : [],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: _pumpManualOn
+                            ? const Color(0xFF00B8DB)
+                            : const Color(0xFF7F8C8D),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _pumpManualOn ? 'Manual' : 'Auto',
+                      style: TextStyle(
+                        color: _pumpManualOn
+                            ? const Color(0xFF00B8DB)
+                            : const Color(0xFF7F8C8D),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // ── Divider ─────────────────────────────────────────────
+          Container(
+            margin: const EdgeInsets.only(top: 16, bottom: 16),
+            height: 0.8,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Colors.transparent,
+                  const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+
+          // ── Status / Countdown area ──────────────────────────────
+          if (_pumpManualOn) ...[
+            Center(
+              child: Column(
+                children: [
+                  Text(
+                    'Pump Running',
+                    style: TextStyle(
+                      color: const Color(0xFF00B8DB),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'Poppins',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Countdown ring
+                  SizedBox(
+                    width: 90,
+                    height: 90,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Arc that drains as time passes
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(
+                            begin: 1.0,
+                            end: _selectedPumpDuration * 60 > 0
+                                ? _pumpRemainingSeconds /
+                                    (_selectedPumpDuration * 60)
+                                : 0.0,
+                          ),
+                          duration: const Duration(seconds: 1),
+                          builder: (context, value, _) {
+                            return CustomPaint(
+                              size: const Size(90, 90),
+                              painter: _ArcPainter(value),
+                            );
+                          },
+                        ),
+                        Text(
+                          _formatCountdown(_pumpRemainingSeconds),
+                          style: const TextStyle(
+                            color: Color(0xFF2C3E50),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Time remaining',
+                    style: TextStyle(
+                      color: const Color(0xFF7F8C8D),
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            // ── Duration selector ──────────────────────────────────
+            Text(
+              'Duration',
+              style: TextStyle(
+                color: const Color(0xFF7F8C8D),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                fontFamily: 'Inter',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: durations.map((mins) {
+                final selected = _selectedPumpDuration == mins;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedPumpDuration = mins),
+                    child: Container(
+                      margin: EdgeInsets.only(
+                        right: mins != durations.last ? 8 : 0,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF00B8DB).withValues(alpha: 0.1)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF00B8DB)
+                              : const Color(0xFFDDE3E9),
+                          width: selected ? 1.5 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${mins}m',
+                          style: TextStyle(
+                            color: selected
+                                ? const Color(0xFF00B8DB)
+                                : const Color(0xFF7F8C8D),
+                            fontSize: 14,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // ── Action button ────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: GestureDetector(
+              onTap: () {
+                if (_pumpManualOn) {
+                  _stopPump();
+                } else {
+                  _startPumpTimer(_selectedPumpDuration * 60);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: _pumpManualOn
+                      ? null
+                      : const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)],
+                        ),
+                  color: _pumpManualOn ? const Color(0xFFFFEEEE) : null,
+                  border: _pumpManualOn
+                      ? Border.all(
+                          color: const Color(0xFFFF6B6B).withValues(alpha: 0.5),
+                          width: 1,
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: _pumpManualOn
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: const Color(0xFF00B8DB).withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _pumpManualOn
+                            ? Icons.stop_circle_outlined
+                            : Icons.play_circle_outline,
+                        color: _pumpManualOn
+                            ? const Color(0xFFFF6B6B)
+                            : Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _pumpManualOn ? 'Stop Pump' : 'Turn On Pump',
+                        style: TextStyle(
+                          color: _pumpManualOn
+                              ? const Color(0xFFFF6B6B)
+                              : Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Info note ────────────────────────────────────────────
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: const Color(0xFF7F8C8D).withValues(alpha: 0.7),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _pumpManualOn
+                      ? 'Pump will return to auto mode when timer ends.'
+                      : 'Pump runs automatically based on sensor data. Use manual mode to clean the holding tank.',
+                  style: TextStyle(
+                    color: const Color(0xFF7F8C8D).withValues(alpha: 0.8),
+                    fontSize: 11,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBottomLogo() {
     return Container(
       width: 45,
@@ -941,4 +1367,48 @@ class WaterWavePainter extends CustomPainter {
   bool shouldRepaint(covariant WaterWavePainter oldDelegate) {
     return oldDelegate.animationValue != animationValue;
   }
+}
+
+// ── Pump Countdown Arc Painter ─────────────────────────────────────────────
+
+class _ArcPainter extends CustomPainter {
+  final double progress; // 1.0 = full, 0.0 = empty
+
+  _ArcPainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final radius = (size.width < size.height ? size.width : size.height) / 2 - 6;
+
+    // Background track
+    final trackPaint = Paint()
+      ..color = const Color(0xFF00B8DB).withValues(alpha: 0.12)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(Offset(cx, cy), radius, trackPaint);
+
+    // Progress arc
+    if (progress > 0) {
+      final arcPaint = Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)],
+        ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: radius))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(cx, cy), radius: radius),
+        -math.pi / 2,
+        2 * math.pi * progress,
+        false,
+        arcPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ArcPainter old) => old.progress != progress;
 }

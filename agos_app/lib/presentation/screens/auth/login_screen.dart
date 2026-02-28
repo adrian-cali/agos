@@ -1,6 +1,11 @@
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import '../../../data/services/firestore_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,12 +20,70 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  bool _googleLoading = false;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
+  }
+
+  /// Navigate to home or setup wizard depending on whether the user has a device.
+  Future<void> _navigateAfterLogin(String uid) async {
+    if (!mounted) return;
+    final hasDevice = await FirestoreService().hasLinkedDevice(uid);
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      hasDevice ? '/home' : '/welcome',
+      (_) => false,
+    );
+  }
+
+  /// Returns true if Google Sign-In is supported on the current platform.
+  bool get _googleSignInSupported =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
+  Future<void> _signInWithGoogle() async {
+    if (!_googleSignInSupported) return;
+    setState(() => _googleLoading = true);
+    try {
+      // Sign out first to force the account picker to appear every time
+      await GoogleSignIn().signOut();
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        setState(() => _googleLoading = false);
+        return; // user cancelled
+      }
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      await FirebaseAuth.instance.signInWithCredential(credential);
+      if (!mounted) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await _navigateAfterLogin(uid);
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'Google sign in failed.'),
+          backgroundColor: const Color(0xFFE74C3C),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Google sign in failed: $e'),
+          backgroundColor: const Color(0xFFE74C3C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _googleLoading = false);
+    }
   }
 
   Future<void> _signIn() async {
@@ -32,7 +95,8 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordCtrl.text,
       );
       if (!mounted) return;
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await _navigateAfterLogin(uid);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       final msg = switch (e.code) {
@@ -98,16 +162,54 @@ class _LoginScreenState extends State<LoginScreen> {
                           boxShadow: [
                             BoxShadow(
                               color:
-                                  const Color(0xFF22D3EE).withValues(alpha: 0.35),
+                                  const Color(0xFF22D3EE).withValues(alpha: 0.37),
                               blurRadius: 24,
                               spreadRadius: 0,
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.water_drop_rounded,
-                          color: Colors.white,
-                          size: 38,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // large soft glow
+                              ImageFiltered(
+                                imageFilter:
+                                    ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                child: Opacity(
+                                  opacity: 0.85,
+                                  child: SvgPicture.asset(
+                                    'assets/svg/agos_square_logo.svg',
+                                    fit: BoxFit.contain,
+                                    colorFilter: const ColorFilter.mode(
+                                        Colors.white, BlendMode.srcIn),
+                                  ),
+                                ),
+                              ),
+                              // subtle inner halo
+                              ImageFiltered(
+                                imageFilter:
+                                    ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                child: Opacity(
+                                  opacity: 0.35,
+                                  child: SvgPicture.asset(
+                                    'assets/svg/agos_square_logo.svg',
+                                    fit: BoxFit.contain,
+                                    colorFilter: const ColorFilter.mode(
+                                        Colors.white, BlendMode.srcIn),
+                                  ),
+                                ),
+                              ),
+                              // crisp foreground logo
+                              SvgPicture.asset(
+                                'assets/svg/agos_square_logo.svg',
+                                fit: BoxFit.contain,
+                                colorFilter: const ColorFilter.mode(
+                                    Colors.white, BlendMode.srcIn),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -242,6 +344,62 @@ class _LoginScreenState extends State<LoginScreen> {
                             loading: _loading,
                             onPressed: _signIn,
                           ),
+                          const SizedBox(height: 20),
+
+                          // OR divider + Google Sign-In (mobile only)
+                          if (_googleSignInSupported) ...[
+                            Row(
+                              children: [
+                                const Expanded(child: Divider(color: Color(0xFFE2EBF3))),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text('or',
+                                      style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          color: const Color(0xFF9CB3C9))),
+                                ),
+                                const Expanded(child: Divider(color: Color(0xFFE2EBF3))),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+
+                            // Google Sign-In button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: OutlinedButton.icon(
+                                onPressed: _googleLoading ? null : _signInWithGoogle,
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  side: const BorderSide(color: Color(0xFFE2EBF3)),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                  elevation: 0,
+                                ),
+                                icon: _googleLoading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Color(0xFF4285F4)),
+                                      )
+                                    : Image.network(
+                                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/240px-Google_%22G%22_logo.svg.png',
+                                        width: 22,
+                                        height: 22,
+                                      ),
+                                label: Text(
+                                  'Continue with Google',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF1D293D),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

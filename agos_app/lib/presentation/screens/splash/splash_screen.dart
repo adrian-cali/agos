@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../data/services/firestore_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -49,10 +50,20 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
-  void _navigateBasedOnAuth() {
+  void _navigateBasedOnAuth() async {
     final user = FirebaseAuth.instance.currentUser;
-    final route = user != null ? '/home' : '/login';
-    Navigator.pushReplacementNamed(context, route);
+    if (user == null) {
+      if (mounted) Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
+    // Check if the user has already set up a device
+    final hasDevice =
+        await FirestoreService().hasLinkedDevice(user.uid);
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      hasDevice ? '/home' : '/welcome',
+    );
   }
 
   @override

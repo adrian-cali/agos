@@ -1,6 +1,7 @@
 import 'package:agos_app/core/constants/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
 
@@ -574,6 +575,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
+              // Also sign out of Google so next sign-in shows the account picker
+              await GoogleSignIn().signOut();
               await FirebaseAuth.instance.signOut();
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(

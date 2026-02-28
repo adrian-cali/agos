@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/websocket_service.dart';
 import '../../../data/services/firestore_service.dart'
-    show latestReadingProvider;
+    show latestReadingProvider, linkedDeviceIdProvider;
 
 class TankDetailsScreen extends ConsumerWidget {
   const TankDetailsScreen({super.key});
@@ -14,7 +14,8 @@ class TankDetailsScreen extends ConsumerWidget {
     final waterQuality = ref.watch(waterQualityProvider);
 
     // Firestore fallback when WebSocket hasn't delivered data yet
-    const deviceId = 'esp32-sim-001';
+    final deviceId =
+        ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
     final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final latest = latestAsync.valueOrNull;
 

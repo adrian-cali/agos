@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import '../../../data/services/websocket_service.dart';
@@ -62,11 +63,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   void _loadHistoricalData() {
-    String period = selectedPeriod == TimePeriod.twentyFourHours
-        ? '24h'
-        : selectedPeriod == TimePeriod.sevenDays
-            ? '7d'
-            : '30d';
+    String period = selectedPeriod == TimePeriod.oneHour
+        ? '1h'
+        : selectedPeriod == TimePeriod.twentyFourHours
+            ? '24h'
+            : selectedPeriod == TimePeriod.sevenDays
+                ? '7d'
+                : '30d';
 
     String metric = selectedMetric == MetricType.turbidity
         ? 'turbidity'
@@ -92,21 +95,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
-  static const _kDeviceId = 'esp32-sim-001';
-
-  String _qualityStatus(double value, String metric) {
+  String _qualityStatus(double value, String metric, UserThresholds t) {
     switch (metric) {
       case 'turbidity':
-        if (value < 20) return '● Optimal';
-        if (value < 50) return '● Warning';
+        if (value <= t.turbidityMax) return '● Optimal';
+        if (value <= t.turbidityMax * 2) return '● Warning';
         return '● Critical';
       case 'ph':
-        if (value >= 6.5 && value <= 8.5) return '● Optimal';
-        if (value >= 5.5 && value <= 9.5) return '● Warning';
+        if (value >= t.phMin && value <= t.phMax) return '● Optimal';
+        if (value >= (t.phMin - 1) && value <= (t.phMax + 1)) return '● Warning';
         return '● Critical';
       case 'tds':
-        if (value < 500) return '● Optimal';
-        if (value < 1000) return '● Warning';
+        if (value < t.tdsMax) return '● Optimal';
+        if (value < t.tdsMax * 2) return '● Warning';
         return '● Critical';
       default:
         return '● Unknown';
@@ -123,9 +124,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // ── Real device ID from Firestore ──────────────────────────────────────
+    final deviceId = ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
     // ── Live Firestore sensor data ─────────────────────────────────────────
-    final latestAsync = ref.watch(latestReadingProvider(_kDeviceId));
+    final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final reading = latestAsync.valueOrNull;
+    // ── User thresholds ────────────────────────────────────────────────────
+    final thresholds = ref.watch(userThresholdsProvider).valueOrNull
+        ?? const UserThresholds();
 
     // ── WebSocket fallback (for Windows where Firestore threading may drop data)
     final waterQuality = ref.watch(waterQualityProvider);
@@ -133,26 +139,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         waterQuality.ph.value > 0 ||
         waterQuality.tds.value > 0;
 
-    // Prefer Firestore reading; fall back to WebSocket if Firestore is null
-    final hasData = reading != null || wsHasQuality;
-    final turbidityVal = reading?.turbidity ??
-        (wsHasQuality ? waterQuality.turbidity.value : 0.0);
-    final phVal =
-        reading?.ph ?? (wsHasQuality ? waterQuality.ph.value : 0.0);
-    final tdsVal =
-        reading?.tds ?? (wsHasQuality ? waterQuality.tds.value : 0.0);
+    // Prefer WebSocket (live, every 5s); fall back to Firestore if WS is offline
+    final hasData = wsHasQuality || reading != null;
+    final turbidityVal = wsHasQuality
+        ? waterQuality.turbidity.value
+        : (reading?.turbidity ?? 0.0);
+    final phVal = wsHasQuality
+        ? waterQuality.ph.value
+        : (reading?.ph ?? 0.0);
+    final tdsVal = wsHasQuality
+        ? waterQuality.tds.value
+        : (reading?.tds ?? 0.0);
 
     final turbidityStr  = hasData ? '${turbidityVal.toStringAsFixed(1)} NTU' : '-- NTU';
     final phStr         = hasData ? phVal.toStringAsFixed(1) : '--';
     final tdsStr        = hasData ? '${tdsVal.toStringAsFixed(0)} ppm' : '-- ppm';
 
-    final turbidityStatus = hasData ? _qualityStatus(turbidityVal, 'turbidity') : '● --';
-    final phStatus        = hasData ? _qualityStatus(phVal, 'ph') : '● --';
-    final tdsStatus       = hasData ? _qualityStatus(tdsVal, 'tds') : '● --';
+    final turbidityStatus = hasData ? _qualityStatus(turbidityVal, 'turbidity', thresholds) : '● --';
+    final phStatus        = hasData ? _qualityStatus(phVal, 'ph', thresholds) : '● --';
+    final tdsStatus       = hasData ? _qualityStatus(tdsVal, 'tds', thresholds) : '● --';
 
-    final turbidityProgress = (turbidityVal / 20.0).clamp(0.0, 1.0);
+    final turbidityProgress = (turbidityVal / thresholds.turbidityMax).clamp(0.0, 1.0);
     final phProgress        = (phVal / 14.0).clamp(0.0, 1.0);
-    final tdsProgress       = (tdsVal / 500.0).clamp(0.0, 1.0);
+    final tdsProgress       = (tdsVal / thresholds.tdsMax).clamp(0.0, 1.0);
     // ──────────────────────────────────────────────────────────────────────
 
     return Scaffold(
@@ -187,7 +196,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               turbidityStr,
                               turbidityStatus,
                               turbidityProgress,
-                              'Target: < 20 NTU',
+                              'Target: < ${thresholds.turbidityMax.toStringAsFixed(0)} NTU',
                               const LinearGradient(
                                 colors: [Color(0xFF00D3F2), Color(0xFF2B7FFF)],
                               ),
@@ -200,7 +209,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               phStr,
                               phStatus,
                               phProgress,
-                              'Target: 6.5 - 8.5',
+                              'Target: ${thresholds.phMin.toStringAsFixed(1)} - ${thresholds.phMax.toStringAsFixed(1)}',
                               const LinearGradient(
                                 colors: [Color(0xFFC27AFF), Color(0xFFF6339A)],
                               ),
@@ -213,7 +222,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               tdsStr,
                               tdsStatus,
                               tdsProgress,
-                              'Target: < 500 ppm',
+                              'Target: < ${thresholds.tdsMax.toStringAsFixed(0)} ppm',
                               const LinearGradient(
                                 colors: [Color(0xFF7C86FF), Color(0xFF2B7FFF)],
                               ),
@@ -876,6 +885,27 @@ class _HistoricalChartCard extends ConsumerStatefulWidget {
 
 class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   TimePeriod _selectedPeriod = TimePeriod.oneHour;
+  Timer? _refreshTimer;
+  int _refreshTick = 0; // increments every minute to force stream re-subscription
+
+  @override
+  void initState() {
+    super.initState();
+    // Re-subscribe Firestore stream every 60s so the cutoff window stays fresh.
+    // Incrementing _refreshTick changes the provider family key, forcing a new
+    // stream subscription with an updated cutoff = DateTime.now() - hours.
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) {
+        setState(() => _refreshTick++);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 
   // Per-metric ranges
   double get _yMin {
@@ -911,7 +941,8 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   }
 
   // ── Firestore integration ─────────────────────────────────────────────────
-  static const _kDeviceId = 'esp32-sim-001';
+  String get _deviceId =>
+      ref.watch(linkedDeviceIdProvider).valueOrNull ?? '';
 
   String get _firestoreField {
     switch (widget.label) {
@@ -983,6 +1014,31 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       result.add(FlSpot(x, value));
     }
     result.sort((a, b) => a.x.compareTo(b.x)); // oldest first (left edge)
+    return result;
+  }
+
+  /// Build spots from the live real-time rolling chart buffer (1H waveform).
+  List<FlSpot> _buildLiveSpots(List<LiveChartPoint> points) {
+    if (points.isEmpty) {
+      _timestampMap.clear();
+      _hasLiveData = false;
+      return [];
+    }
+    _hasLiveData = true;
+    _timestampMap.clear();
+    final List<FlSpot> result = [];
+    for (final p in points) {
+      final double x = _toX(p.timestamp);
+      final double value = switch (_firestoreField) {
+        'turbidity' => p.turbidity,
+        'ph' => p.ph,
+        _ => p.tds,
+      };
+      final xInt = x.round();
+      _timestampMap[xInt] = p.timestamp;
+      result.add(FlSpot(x, value));
+    }
+    result.sort((a, b) => a.x.compareTo(b.x));
     return result;
   }
 
@@ -1123,19 +1179,27 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           ),
           const SizedBox(height: 16),
           Builder(builder: (_) {
-            final historyAsync = ref.watch(
-              readingHistoryProvider((_kDeviceId, _periodHours)),
-            );
-            // Show loading spinner while waiting for first snapshot
-            if (historyAsync.isLoading) {
-              return const SizedBox(
-                height: 200,
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+            // 1H → use live rolling WebSocket buffer (real-time waveform, no cutoff lag)
+            // 24H/7D/30D → use Firestore history stream
+            final List<FlSpot> spots;
+            if (_selectedPeriod == TimePeriod.oneHour) {
+              final livePoints = ref.watch(liveChartPointsProvider);
+              _dataError = null;
+              spots = _buildLiveSpots(livePoints);
+            } else {
+              final historyAsync = ref.watch(
+                readingHistoryProvider((_deviceId, _periodHours, _refreshTick)),
               );
+              if (historyAsync.isLoading) {
+                return const SizedBox(
+                  height: 200,
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              }
+              spots = _buildSpots(historyAsync);
             }
-            final spots = _buildSpots(historyAsync);
             if (_dataError != null) {
               return SizedBox(
                 height: 200,
@@ -1182,9 +1246,11 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                       Icon(Icons.show_chart_rounded,
                           size: 40, color: const Color(0xFFCFD8DC)),
                       const SizedBox(height: 12),
-                      const Text(
-                        'No historical data yet',
-                        style: TextStyle(
+                      Text(
+                        _selectedPeriod == TimePeriod.oneHour
+                            ? 'Waiting for live data...'
+                            : 'No historical data yet',
+                        style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
@@ -1192,9 +1258,11 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Data will appear as readings accumulate',
-                        style: TextStyle(
+                      Text(
+                        _selectedPeriod == TimePeriod.oneHour
+                            ? 'Chart updates every 5 seconds from live sensor'
+                            : 'Data will appear as readings accumulate',
+                        style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 12,
                           color: Color(0xFFB0BEC5),
@@ -1250,10 +1318,14 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   }
 
   LineChartData _buildChartData(List<FlSpot> spots) {
-    // maxX = full period window; effectiveMaxX never exceeds _maxX
-    final effectiveMaxX = spots.isNotEmpty
-        ? (spots.last.x).ceilToDouble().clamp(spots.last.x, _maxX)
-        : _maxX;
+    // For 1H live view: always show the full 60-min window so the waveform
+    // grows from left to right and the right edge stays at "now".
+    // For history views: shrink to fit the actual data range.
+    final effectiveMaxX = _selectedPeriod == TimePeriod.oneHour
+        ? _maxX
+        : (spots.isNotEmpty
+            ? (spots.last.x).ceilToDouble().clamp(spots.last.x, _maxX)
+            : _maxX);
     return LineChartData(
       lineBarsData: [
         LineChartBarData(
@@ -1342,9 +1414,15 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           tooltipBorder: const BorderSide(color: Color(0xFFE2E8F0)),
           tooltipRoundedRadius: 8.0,
           getTooltipItems: (touchedSpots) {
+            final String unit;
+            switch (widget.label) {
+              case 'pH': unit = ''; break;
+              case 'TDS': unit = ' ppm'; break;
+              default: unit = ' NTU'; // Turbidity
+            }
             return touchedSpots.map((spot) {
               return LineTooltipItem(
-                '${_getTooltipX(spot.x)}\n${spot.y.toStringAsFixed(1)}',
+                '${_getTooltipX(spot.x)}\n${spot.y.toStringAsFixed(2)}$unit',
                 TextStyle(
                   color: widget.primaryColor,
                   fontSize: 12,

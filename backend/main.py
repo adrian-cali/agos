@@ -79,7 +79,14 @@ state = {
             "ph_max": 8.3,
             "tds_max": 500.0
         }
-    }
+    },
+    # Pump runtime state — updated when pump_command is received or sensor reports back
+    "pump": {
+        "pump_on": False,
+        "manual": False,
+        "remaining_seconds": 0,
+        "last_command": None,
+    },
 }
 
 # Historical data storage
@@ -91,24 +98,42 @@ historical_data = {
 
 
 def generate_historical_data():
-    """Generate mock historical data for 30 days"""
+    """Generate mock historical data: 5-minute intervals for last 24h, hourly for older data."""
     now = datetime.now()
 
     for metric in ["turbidity", "ph", "tds"]:
         historical_data[metric] = []
-        for i in range(30 * 24):  # 30 days * 24 hours
+
+        # Dense: 5-minute intervals for the last 24 hours (288 points)
+        for i in range(288):
+            timestamp = now - timedelta(minutes=(288 - i) * 5)
+            if metric == "turbidity":
+                value = random.uniform(1.5, 4.5)
+            elif metric == "ph":
+                value = random.uniform(6.8, 7.6)
+            else:
+                value = random.uniform(200, 450)
+            historical_data[metric].append({
+                "timestamp": timestamp.isoformat(),
+                "value": round(value, 2)
+            })
+
+        # Sparse: hourly for days 2-30
+        for i in range(1, 30 * 24):  # skip first 24h (already covered above)
             timestamp = now - timedelta(hours=(30 * 24 - i))
+            if timestamp >= now - timedelta(hours=24):
+                continue  # skip overlap
 
             if metric == "turbidity":
-                value = random.uniform(125, 135)
+                value = random.uniform(1.5, 4.5)
             elif metric == "ph":
-                value = random.uniform(7.2, 7.6)
+                value = random.uniform(6.8, 7.6)
             else:  # tds
-                value = random.uniform(340, 355)
+                value = random.uniform(200, 450)
 
             historical_data[metric].append({
                 "timestamp": timestamp.isoformat(),
-                "value": round(value, 1)
+                "value": round(value, 2)
             })
 
 
@@ -117,8 +142,9 @@ generate_historical_data()
 
 # ============= FIRESTORE WRITE THROTTLE =============
 # Only write to Firestore once every FIRESTORE_WRITE_INTERVAL_S seconds per device.
-# Free-tier quota: 20,000 writes/day (~13/min). At 30 s interval we use ~2,880/day.
-FIRESTORE_WRITE_INTERVAL_S = 30
+# Free-tier quota: 20,000 writes/day.
+# At 15 s interval: 5,760/day per device. For 2 devices: ~11,520/day (57% of free limit).
+FIRESTORE_WRITE_INTERVAL_S = 15
 _last_firestore_write: dict[str, datetime] = {}   # device_id → last write time
 
 
@@ -149,14 +175,15 @@ class ConnectionManager:
         self.app_connections.add(websocket)
         logger.info(f"App connected. Total: {len(self.app_connections)}")
 
-        # Send state snapshot
+        # Send state snapshot (includes current pump state)
         await websocket.send_json({
             "type": "state_snapshot",
             "timestamp": datetime.now().isoformat(),
             "tank_data": state["tank_data"],
             "water_quality": state["water_quality"],
             "alerts": state["alerts"],
-            "devices": state["devices"]
+            "devices": state["devices"],
+            "pump": state["pump"],
         })
 
     def disconnect_sensor(self, websocket: WebSocket):
@@ -274,6 +301,7 @@ async def handle_sensor_data(data: dict):
                 "status": state["tank_data"]["status"],
             }
             db.collection("sensor_readings").add(reading_doc)
+            logger.info(f"[Firestore] Wrote sensor reading for {device_id}: turb={turb:.2f}")
 
             # Update device last_seen
             db.collection("devices").document(device_id).set({
@@ -294,6 +322,7 @@ async def handle_sensor_data(data: dict):
     await manager.broadcast_to_apps({
         "type": "quality_update",
         "timestamp": datetime.now().isoformat(),
+        "device_id": device_id,
         "data": state["water_quality"]
     })
 
@@ -341,7 +370,9 @@ async def handle_get_history(data: dict, websocket: WebSocket):
 
     now = datetime.now()
 
-    if period == "24h":
+    if period == "1h":
+        cutoff = now - timedelta(hours=1)
+    elif period == "24h":
         cutoff = now - timedelta(hours=24)
     elif period == "7d":
         cutoff = now - timedelta(days=7)
@@ -362,6 +393,128 @@ async def handle_get_history(data: dict, websocket: WebSocket):
     })
 
     logger.info(f"Historical data sent: {metric} - {period} ({len(filtered_data)} points)")
+
+
+# active pump countdown task handle
+_pump_countdown_task: Optional[asyncio.Task] = None
+
+
+async def _pump_countdown_loop(duration_seconds: int):
+    """Server-side countdown that broadcasts pump_update every second."""
+    remaining = duration_seconds
+    while remaining > 0:
+        await asyncio.sleep(1)
+        remaining -= 1
+        state["pump"]["remaining_seconds"] = remaining
+        await manager.broadcast_to_apps({
+            "type": "pump_update",
+            "pump_on": True,
+            "manual": True,
+            "remaining_seconds": remaining,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    # Timer expired → auto-off
+    state["pump"].update({"pump_on": False, "manual": False, "remaining_seconds": 0})
+    # Forward off command to sensors
+    off_msg = {
+        "type": "pump_command",
+        "action": "off",
+        "duration_seconds": 0,
+        "source": "timer_expired",
+        "timestamp": datetime.now().isoformat(),
+    }
+    disconnected = set()
+    for conn in manager.sensor_connections:
+        try:
+            await conn.send_json(off_msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    await manager.broadcast_to_apps({
+        "type": "pump_update",
+        "pump_on": False,
+        "manual": False,
+        "remaining_seconds": 0,
+        "timestamp": datetime.now().isoformat(),
+    })
+    logger.info("Pump auto-off: timer expired")
+
+
+async def handle_pump_command(data: dict):
+    """
+    Received from the Flutter app over /ws/app.
+    Forwards the command to all connected ESP32 sensors and
+    broadcasts a pump_update back to all apps.
+    """
+    global _pump_countdown_task
+
+    action = data.get("action", "off")  # "on" or "off"
+    duration_seconds = int(data.get("duration_seconds", 0))
+    is_on = action == "on"
+
+    # Cancel any running countdown
+    if _pump_countdown_task and not _pump_countdown_task.done():
+        _pump_countdown_task.cancel()
+        _pump_countdown_task = None
+
+    # Update server pump state
+    state["pump"].update({
+        "pump_on": is_on,
+        "manual": is_on,
+        "remaining_seconds": duration_seconds if is_on else 0,
+        "last_command": datetime.now().isoformat(),
+    })
+
+    # Forward to every connected sensor (ESP32)
+    forward_msg = {
+        "type": "pump_command",
+        "action": action,
+        "duration_seconds": duration_seconds,
+        "timestamp": datetime.now().isoformat(),
+    }
+    disconnected = set()
+    for conn in manager.sensor_connections:
+        try:
+            await conn.send_json(forward_msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    # Log to Firestore (optional)
+    if FIREBASE_ENABLED and db is not None:
+        try:
+            db.collection("pump_commands").add({
+                "action": action,
+                "duration_seconds": duration_seconds,
+                "source": "app",
+                "timestamp": firestore.SERVER_TIMESTAMP,
+            })
+        except Exception as e:
+            logger.error(f"Firestore pump log error: {e}")
+
+    # Broadcast pump_update to all app clients
+    await manager.broadcast_to_apps({
+        "type": "pump_update",
+        "pump_on": is_on,
+        "manual": is_on,
+        "remaining_seconds": duration_seconds if is_on else 0,
+        "timestamp": datetime.now().isoformat(),
+    })
+
+    # Start server-side countdown if turning on with a duration
+    if is_on and duration_seconds > 0:
+        _pump_countdown_task = asyncio.create_task(
+            _pump_countdown_loop(duration_seconds)
+        )
+
+    logger.info(
+        f"Pump command: action={action}, duration={duration_seconds}s, "
+        f"sensors_forwarded={len(manager.sensor_connections)}"
+    )
 
 
 # ============= HTTP ENDPOINTS =============
@@ -495,10 +648,13 @@ async def websocket_app(websocket: WebSocket):
                     "tank_data": state["tank_data"],
                     "water_quality": state["water_quality"],
                     "alerts": state["alerts"],
-                    "devices": state["devices"]
+                    "devices": state["devices"],
+                    "pump": state["pump"],
                 })
             elif msg_type == "get_history":
                 await handle_get_history(data, websocket)
+            elif msg_type == "pump_command":
+                await handle_pump_command(data)
             elif msg_type == "heartbeat":
                 await websocket.send_json({
                     "type": "heartbeat_ack",

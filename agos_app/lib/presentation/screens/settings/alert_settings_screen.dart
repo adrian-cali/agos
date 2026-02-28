@@ -1,23 +1,87 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../data/services/firestore_service.dart';
 import '../../widgets/fade_slide_in.dart';
 
-class AlertSettingsScreen extends StatefulWidget {
+class AlertSettingsScreen extends ConsumerStatefulWidget {
   const AlertSettingsScreen({super.key});
 
   @override
-  State<AlertSettingsScreen> createState() => _AlertSettingsScreenState();
+  ConsumerState<AlertSettingsScreen> createState() =>
+      _AlertSettingsScreenState();
 }
 
-class _AlertSettingsScreenState extends State<AlertSettingsScreen> {
+class _AlertSettingsScreenState extends ConsumerState<AlertSettingsScreen> {
   double _turbidityMax = 5.0;
   RangeValues _phRange = const RangeValues(6.5, 8.3);
   double _tdsMax = 500.0;
   double _waterLevelLow = 20.0;
   double _waterLevelHigh = 90.0;
 
+  bool _initialised = false;
+  bool _saving = false;
+
+  void _applyThresholds(UserThresholds t) {
+    setState(() {
+      _turbidityMax = t.turbidityMax;
+      _phRange = RangeValues(t.phMin, t.phMax);
+      _tdsMax = t.tdsMax;
+      _waterLevelLow = t.levelMin;
+      _waterLevelHigh = t.levelHigh;
+    });
+  }
+
+  Future<void> _save() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(firestoreServiceProvider).saveThresholds(
+            user.uid,
+            UserThresholds(
+              turbidityMax: _turbidityMax,
+              phMin: _phRange.start,
+              phMax: _phRange.end,
+              tdsMax: _tdsMax,
+              levelMin: _waterLevelLow,
+              levelHigh: _waterLevelHigh,
+            ),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Alert thresholds saved!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Load from Firestore once
+    final thresholdsAsync = ref.watch(userThresholdsProvider);
+    thresholdsAsync.whenData((t) {
+      if (!_initialised) {
+        _initialised = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _applyThresholds(t));
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -111,30 +175,54 @@ class _AlertSettingsScreenState extends State<AlertSettingsScreen> {
                     setState(() => _waterLevelHigh = v),
               ),
               const SizedBox(height: 32),
-              // Save button
+              // Buttons row
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Thresholds saved!')),
-                      );
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _saving
+                            ? null
+                            : () => _applyThresholds(const UserThresholds()),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          minimumSize: const Size(0, 56),
+                        ),
+                        child: const Text('Reset',
+                            style: TextStyle(fontSize: 16)),
+                      ),
                     ),
-                    child: const Text('Save',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: _saving ? null : _save,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          minimumSize: const Size(0, 56),
+                        ),
+                        child: _saving
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white),
+                              )
+                            : const Text('Save',
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 40),

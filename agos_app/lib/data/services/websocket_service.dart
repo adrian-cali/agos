@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/constants/api_config.dart';
+import 'firestore_service.dart';
 
 // ============= Models =============
 
@@ -182,6 +183,7 @@ class WebSocketService {
       await Future.delayed(const Duration(milliseconds: 500));
       
       _isConnected = true;
+      _reconnectDelay = 3; // reset backoff on successful connect
 
       _channel!.stream.listen(
         (message) {
@@ -211,7 +213,7 @@ class WebSocketService {
     } catch (e) {
       print('Failed to connect to WebSocket: $e');
       _isConnected = false;
-      // Don't schedule reconnect to prevent endless loops
+      _scheduleReconnect();
     }
   }
 
@@ -251,6 +253,17 @@ class WebSocketService {
     });
   }
 
+  /// Send a pump command to the ESP32.
+  /// [on] - true to turn pump ON, false to turn OFF.
+  /// [durationSeconds] - how long to run the pump (0 = indefinite until manual OFF).
+  void sendPumpCommand({required bool on, int durationSeconds = 0}) {
+    send({
+      'type': 'pump_command',
+      'action': on ? 'on' : 'off',
+      'duration_seconds': durationSeconds,
+    });
+  }
+
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -260,11 +273,21 @@ class WebSocketService {
     });
   }
 
+  int _reconnectDelay = 3; // seconds, doubles on each failure up to max
+
   void _scheduleReconnect() {
-    // Disable automatic reconnection to prevent endless failure loops
-    // Users can manually refresh/reconnect when backend is available
     _reconnectTimer?.cancel();
-    print('WebSocket disconnected. Auto-reconnection disabled to prevent crashes.');
+    final delay = _reconnectDelay;
+    // Cap reconnect delay at 30s
+    _reconnectDelay = (_reconnectDelay * 2).clamp(3, 30);
+    print('WebSocket disconnected. Reconnecting in ${delay}s...');
+    _reconnectTimer = Timer(Duration(seconds: delay), () {
+      if (!_isConnected) {
+        print('Attempting WebSocket reconnect...');
+        _reconnectDelay = 3; // reset on attempt
+        connect();
+      }
+    });
   }
 
   void disconnect() {
@@ -409,3 +432,148 @@ class HistoricalDataNotifier extends StateNotifier<List<HistoricalPoint>> {
   HistoricalDataNotifier() : super([]);
   void setData(List<HistoricalPoint> data) => state = data;
 }
+
+// ============= Live Chart Data (real-time rolling waveform) =============
+
+/// A single timestamped reading used for the live chart waveform.
+class LiveChartPoint {
+  final DateTime timestamp;
+  final double turbidity;
+  final double ph;
+  final double tds;
+
+  const LiveChartPoint({
+    required this.timestamp,
+    required this.turbidity,
+    required this.ph,
+    required this.tds,
+  });
+}
+
+/// Keeps a rolling 1-hour buffer of live sensor readings.
+/// Pre-seeded from Firestore history on first use, then appended to via WebSocket.
+class LiveChartNotifier extends StateNotifier<List<LiveChartPoint>> {
+  static const _maxAge = Duration(hours: 1);
+
+  LiveChartNotifier() : super([]);
+
+  /// Seed with historical readings. Called once on startup.
+  void seed(List<LiveChartPoint> points) {
+    final cutoff = DateTime.now().subtract(_maxAge);
+    state = points.where((p) => p.timestamp.isAfter(cutoff)).toList();
+  }
+
+  /// Append a new live reading and drop anything older than 1 hour.
+  void addPoint(LiveChartPoint point) {
+    final cutoff = DateTime.now().subtract(_maxAge);
+    final trimmed = state.where((p) => p.timestamp.isAfter(cutoff)).toList();
+    state = [...trimmed, point];
+  }
+}
+
+// ============= Pump State =============
+
+/// Represents the current state of the pump.
+class PumpState {
+  /// Whether the pump is currently running.
+  final bool isOn;
+
+  /// Whether the pump was manually turned on (vs. automated sensor-based).
+  final bool isManual;
+
+  /// Remaining seconds of the manual timer. 0 means no timer / automated mode.
+  final int remainingSeconds;
+
+  const PumpState({
+    this.isOn = false,
+    this.isManual = false,
+    this.remainingSeconds = 0,
+  });
+
+  PumpState copyWith({bool? isOn, bool? isManual, int? remainingSeconds}) {
+    return PumpState(
+      isOn: isOn ?? this.isOn,
+      isManual: isManual ?? this.isManual,
+      remainingSeconds: remainingSeconds ?? this.remainingSeconds,
+    );
+  }
+}
+
+class PumpStateNotifier extends StateNotifier<PumpState> {
+  PumpStateNotifier() : super(const PumpState());
+
+  void update(PumpState newState) => state = newState;
+
+  void setOn({required bool manual, int durationSeconds = 0}) {
+    state = PumpState(isOn: true, isManual: manual, remainingSeconds: durationSeconds);
+  }
+
+  void setOff() {
+    state = const PumpState(isOn: false, isManual: false, remainingSeconds: 0);
+  }
+
+  void tick() {
+    if (state.remainingSeconds > 0) {
+      state = state.copyWith(remainingSeconds: state.remainingSeconds - 1);
+    }
+  }
+}
+
+final pumpStateProvider =
+    StateNotifierProvider<PumpStateNotifier, PumpState>((ref) {
+  final notifier = PumpStateNotifier();
+  final ws = ref.watch(webSocketServiceProvider);
+  // Listen for pump_update messages from the ESP32 / backend
+  ws.addListener((data) {
+    final type = data['type'];
+    if (type == 'pump_update') {
+      final bool on = data['pump_on'] == true;
+      final bool manual = data['manual'] == true;
+      final int remaining = (data['remaining_seconds'] ?? 0) as int;
+      notifier.update(PumpState(isOn: on, isManual: manual, remainingSeconds: remaining));
+    } else if (type == 'state_snapshot') {
+      final pumpData = data['pump'] as Map<String, dynamic>?;
+      if (pumpData != null) {
+        final bool on = pumpData['pump_on'] == true;
+        final bool manual = pumpData['manual'] == true;
+        final int remaining = (pumpData['remaining_seconds'] ?? 0) as int;
+        notifier.update(PumpState(isOn: on, isManual: manual, remainingSeconds: remaining));
+      }
+    }
+  });
+  return notifier;
+});
+/// Global rolling 1-hour live chart buffer.
+/// Listens to all quality_update WebSocket messages — no device filter needed
+/// because the backend only streams data for the connected sensor device.
+final liveChartPointsProvider =
+    StateNotifierProvider<LiveChartNotifier, List<LiveChartPoint>>((ref) {
+  final notifier = LiveChartNotifier();
+
+  // Listen for real-time quality_update messages from the WebSocket.
+  final ws = ref.watch(webSocketServiceProvider);
+  ws.addListener((data) {
+    if (data['type'] == 'quality_update') {
+      final qualityData = data['data'] as Map<String, dynamic>?;
+      if (qualityData == null) return;
+
+      final turb = (qualityData['turbidity']?['value'] ?? 0.0).toDouble();
+      final ph = (qualityData['ph']?['value'] ?? 0.0).toDouble();
+      final tds = (qualityData['tds']?['value'] ?? 0.0).toDouble();
+
+      final tsStr = data['timestamp'] as String?;
+      final ts = tsStr != null
+          ? (DateTime.tryParse(tsStr) ?? DateTime.now()).toLocal()
+          : DateTime.now();
+
+      notifier.addPoint(LiveChartPoint(
+        timestamp: ts,
+        turbidity: turb,
+        ph: ph,
+        tds: tds,
+      ));
+    }
+  });
+
+  return notifier;
+});

@@ -84,6 +84,7 @@ class UserThresholds {
   final double phMax;         // pH above this is warning
   final double tdsMax;        // ppm — above this is warning/critical
   final double levelMin;      // % — below this is warning
+  final double levelHigh;     // % — above this triggers full-tank alert
 
   const UserThresholds({
     this.turbidityMax = 10.0,
@@ -91,6 +92,7 @@ class UserThresholds {
     this.phMax = 8.5,
     this.tdsMax = 400.0,
     this.levelMin = 20.0,
+    this.levelHigh = 90.0,
   });
 
   UserThresholds copyWith({
@@ -99,6 +101,7 @@ class UserThresholds {
     double? phMax,
     double? tdsMax,
     double? levelMin,
+    double? levelHigh,
   }) =>
       UserThresholds(
         turbidityMax: turbidityMax ?? this.turbidityMax,
@@ -106,6 +109,7 @@ class UserThresholds {
         phMax: phMax ?? this.phMax,
         tdsMax: tdsMax ?? this.tdsMax,
         levelMin: levelMin ?? this.levelMin,
+        levelHigh: levelHigh ?? this.levelHigh,
       );
 
   Map<String, dynamic> toMap() => {
@@ -114,6 +118,7 @@ class UserThresholds {
         'ph_max': phMax,
         'tds_max': tdsMax,
         'level_min': levelMin,
+        'level_high': levelHigh,
       };
 
   factory UserThresholds.fromMap(Map<String, dynamic> m) => UserThresholds(
@@ -122,6 +127,7 @@ class UserThresholds {
         phMax: (m['ph_max'] ?? 8.5).toDouble(),
         tdsMax: (m['tds_max'] ?? 400.0).toDouble(),
         levelMin: (m['level_min'] ?? 20.0).toDouble(),
+        levelHigh: (m['level_high'] ?? 90.0).toDouble(),
       );
 }
 
@@ -201,11 +207,16 @@ class FirestoreService {
 
 
   /// Sensor readings for the last [hours] hours, suitable for charts.
+  /// Capped at [maxPoints] most-recent documents to stay within Firestore free-tier quota.
   Stream<List<SensorReading>> historyStream(
     String deviceId, {
     int hours = 24,
+    int maxPoints = 200,
   }) {
     final cutoff = DateTime.now().subtract(Duration(hours: hours));
+    // Query ascending by timestamp; Firestore will auto-create this index.
+    // We take the last [maxPoints] results by reading all matching docs
+    // (bounded by the time window) and returning them sorted oldest→newest.
     return _db
         .collection('sensor_readings')
         .where('device_id', isEqualTo: deviceId)
@@ -213,7 +224,14 @@ class FirestoreService {
         .orderBy('timestamp', descending: false)
         .snapshots()
         .map(
-          (snap) => snap.docs.map(SensorReading.fromFirestore).toList(),
+          (snap) {
+            final docs = snap.docs.map(SensorReading.fromFirestore).toList();
+            // Keep only the most recent maxPoints to limit per-open read cost
+            if (docs.length > maxPoints) {
+              return docs.sublist(docs.length - maxPoints);
+            }
+            return docs;
+          },
         );
   }
 
@@ -261,6 +279,80 @@ class FirestoreService {
         .doc('thresholds')
         .set(t.toMap());
   }
+
+  // ─── Device Setup ─────────────────────────────────────────────────────────
+
+  /// Returns true if the user already has a linked device in Firestore.
+  Future<bool> hasLinkedDevice(String uid) async {
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      if (!doc.exists || doc.data() == null) return false;
+      final data = doc.data()!;
+      final deviceId = data['device_id'];
+      return deviceId != null && (deviceId as String).isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Save device setup info after pairing completes.
+  ///
+  /// [uid] is the current user's UID.
+  /// [deviceId] is the ESP32 device identifier.
+  /// [deviceName] is the user-assigned name (e.g., "Kitchen Tank").
+  /// [location] is an optional location/room label.
+  /// [connectionType] is 'wifi' or 'bluetooth'.
+  /// [ownerName] is the full name from the Device Information form.
+  /// [ownerPhone] is the phone number from the Device Information form.
+  Future<void> saveDeviceSetup({
+    required String uid,
+    required String deviceId,
+    String deviceName = 'My AGOS Device',
+    String location = '',
+    String connectionType = 'wifi',
+    String ownerName = '',
+    String ownerPhone = '',
+  }) async {
+    final batch = _db.batch();
+
+    // Update user profile with device link + extra info
+    final userUpdate = <String, dynamic>{'device_id': deviceId};
+    if (ownerName.isNotEmpty) userUpdate['name'] = ownerName;
+    if (ownerPhone.isNotEmpty) userUpdate['phone'] = ownerPhone;
+    if (location.isNotEmpty) userUpdate['location'] = location;
+    batch.set(
+      _db.collection('users').doc(uid),
+      userUpdate,
+      SetOptions(merge: true),
+    );
+
+    // Save device record
+    batch.set(
+      _db.collection('devices').doc(deviceId),
+      {
+        'name': deviceName,
+        'location': location,
+        'owner_uid': uid,
+        'connection_type': connectionType,
+        'created_at': FieldValue.serverTimestamp(),
+        'last_seen': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    await batch.commit();
+  }
+
+  /// Returns the linked device ID for [uid], or null if none.
+  Future<String?> getLinkedDeviceId(String uid) async {
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      if (!doc.exists || doc.data() == null) return null;
+      return doc.data()!['device_id'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 // ============= Providers =============
@@ -295,10 +387,12 @@ final recentReadingsProvider =
   return service.latestReadingsStream(deviceId, limit: limit);
 });
 
-/// History stream for chart data: (deviceId, hours).
+/// History stream for chart data: (deviceId, hours, tick).
+/// The [tick] parameter is incremented periodically to force a new Firestore
+/// subscription with a fresh cutoff timestamp, keeping the chart window current.
 final readingHistoryProvider =
-    StreamProvider.family<List<SensorReading>, (String, int)>((ref, args) {
-  final (deviceId, hours) = args;
+    StreamProvider.family<List<SensorReading>, (String, int, int)>((ref, args) {
+  final (deviceId, hours, _) = args; // tick is intentionally ignored — only forces new instance
   final service = ref.watch(firestoreServiceProvider);
   return service.historyStream(deviceId, hours: hours);
 });
@@ -317,6 +411,96 @@ final userThresholdsProvider = StreamProvider<UserThresholds>((ref) {
   if (user == null) return Stream.value(const UserThresholds());
   final service = ref.watch(firestoreServiceProvider);
   return service.userThresholdsStream(user.uid);
+});
+
+/// Whether the current user has a linked AGOS device.
+/// Returns false while loading or if not signed in.
+final hasLinkedDeviceProvider = FutureProvider<bool>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return false;
+  final service = ref.watch(firestoreServiceProvider);
+  return service.hasLinkedDevice(user.uid);
+});
+
+/// The real device ID from Firestore for the signed-in user.
+/// Returns null while loading or if no device is linked.
+final linkedDeviceIdProvider = FutureProvider<String?>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return null;
+  final service = ref.watch(firestoreServiceProvider);
+  return service.getLinkedDeviceId(user.uid);
+});
+
+// ─── Setup State (transient, lives only during the setup flow) ─────────────
+
+class SetupState {
+  final String deviceId;
+  final String deviceName;
+  final String location;
+  final String connectionType;
+  final String ownerName;
+  final String ownerEmail;
+  final String ownerPhone;
+
+  const SetupState({
+    this.deviceId = '',
+    this.deviceName = 'My AGOS Device',
+    this.location = '',
+    this.connectionType = 'wifi',
+    this.ownerName = '',
+    this.ownerEmail = '',
+    this.ownerPhone = '',
+  });
+
+  SetupState copyWith({
+    String? deviceId,
+    String? deviceName,
+    String? location,
+    String? connectionType,
+    String? ownerName,
+    String? ownerEmail,
+    String? ownerPhone,
+  }) {
+    return SetupState(
+      deviceId: deviceId ?? this.deviceId,
+      deviceName: deviceName ?? this.deviceName,
+      location: location ?? this.location,
+      connectionType: connectionType ?? this.connectionType,
+      ownerName: ownerName ?? this.ownerName,
+      ownerEmail: ownerEmail ?? this.ownerEmail,
+      ownerPhone: ownerPhone ?? this.ownerPhone,
+    );
+  }
+}
+
+class SetupStateNotifier extends StateNotifier<SetupState> {
+  SetupStateNotifier() : super(const SetupState());
+
+  void setDeviceId(String id) => state = state.copyWith(deviceId: id);
+  void setConnectionType(String type) =>
+      state = state.copyWith(connectionType: type);
+  void setDeviceInfo({
+    required String ownerName,
+    required String ownerEmail,
+    required String ownerPhone,
+    required String location,
+    String? deviceName,
+  }) {
+    state = state.copyWith(
+      ownerName: ownerName,
+      ownerEmail: ownerEmail,
+      ownerPhone: ownerPhone,
+      location: location,
+      deviceName: deviceName ?? state.deviceName,
+    );
+  }
+
+  void reset() => state = const SetupState();
+}
+
+final setupStateProvider =
+    StateNotifierProvider<SetupStateNotifier, SetupState>((ref) {
+  return SetupStateNotifier();
 });
 
 // ============= Alert helpers =============
