@@ -126,6 +126,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   Widget build(BuildContext context) {
     // ── Real device ID from Firestore ──────────────────────────────────────
     final deviceId = ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
+    // ── User profile (for location display) ───────────────────────────────
+    final userProfile = ref.watch(userProfileProvider).valueOrNull;
+    final deviceLocation = userProfile?.location ?? '';
     // ── Live Firestore sensor data ─────────────────────────────────────────
     final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final reading = latestAsync.valueOrNull;
@@ -172,7 +175,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             children: [
               // Header with blue gradient and particles (no animation)
-              _buildHeader(),
+              _buildHeader(deviceLocation),
               // Scrollable content
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 25),
@@ -262,7 +265,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(String deviceLocation) {
     return Container(
       // height: 278,
       width: double.infinity,
@@ -386,9 +389,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         ],
                       ),
                       // const SizedBox(height: 16),
-                      // University name
+                      // University / location name
                       Text(
-                        'Pamantasan ng Lungsod ng Maynila',
+                        deviceLocation.isNotEmpty
+                            ? deviceLocation
+                            : 'No location set',
                         style: TextStyle(
                           color: const Color(0xFFBEDBFF),
                           fontSize: 12,

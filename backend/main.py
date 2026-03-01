@@ -141,18 +141,40 @@ def generate_historical_data():
 generate_historical_data()
 
 # ============= FIRESTORE WRITE THROTTLE =============
-# Only write to Firestore once every FIRESTORE_WRITE_INTERVAL_S seconds per device.
 # Free-tier quota: 20,000 writes/day.
-# At 15 s interval: 5,760/day per device. For 2 devices: ~11,520/day (57% of free limit).
-FIRESTORE_WRITE_INTERVAL_S = 15
-_last_firestore_write: dict[str, datetime] = {}   # device_id → last write time
+#
+# Two throttle intervals:
+#   FIRESTORE_WRITE_INTERVAL_S  = 15 s → sensor_readings.add()
+#       1 device  : 86400/15 = 5,760/day
+#       2 devices : 11,520/day  (58% of 20k) ✅
+#
+#   DEVICE_UPDATE_INTERVAL_S    = 60 s → devices.set() last_seen
+#       1 device  : 86400/60 = 1,440/day
+#       2 devices : 2,880/day  (14% of 20k) ✅
+#
+#   Both sensors running → total ≈ 11,520 + 2,880 = 14,400/day  (72% of 20k) ✅ safe
+
+FIRESTORE_WRITE_INTERVAL_S = 15    # sensor_readings — every 15 s
+DEVICE_UPDATE_INTERVAL_S   = 60    # devices last_seen — every 60 s
+
+_last_firestore_write:  dict[str, datetime] = {}   # device_id → last sensor_readings write
+_last_device_update:    dict[str, datetime] = {}   # device_id → last devices.set() write
 
 
 def _should_write_firestore(device_id: str) -> bool:
-    """Return True if enough time has passed since the last Firestore write for this device."""
+    """Return True if enough time has passed since the last sensor_readings write for this device."""
     last = _last_firestore_write.get(device_id)
     if last is None or (datetime.now() - last).total_seconds() >= FIRESTORE_WRITE_INTERVAL_S:
         _last_firestore_write[device_id] = datetime.now()
+        return True
+    return False
+
+
+def _should_update_device(device_id: str) -> bool:
+    """Return True if enough time has passed since the last devices.set() write for this device."""
+    last = _last_device_update.get(device_id)
+    if last is None or (datetime.now() - last).total_seconds() >= DEVICE_UPDATE_INTERVAL_S:
+        _last_device_update[device_id] = datetime.now()
         return True
     return False
 
@@ -302,16 +324,21 @@ async def handle_sensor_data(data: dict):
             }
             db.collection("sensor_readings").add(reading_doc)
             logger.info(f"[Firestore] Wrote sensor reading for {device_id}: turb={turb:.2f}")
+        except Exception as e:
+            logger.error(f"Firestore sensor_readings write error: {e}")
 
-            # Update device last_seen
+    # Device last_seen update (throttled separately — once every DEVICE_UPDATE_INTERVAL_S seconds)
+    if FIREBASE_ENABLED and db is not None and _should_update_device(device_id):
+        try:
             db.collection("devices").document(device_id).set({
                 "last_seen": firestore.SERVER_TIMESTAMP,
                 "status": "connected",
                 "level": state["tank_data"]["level"],
                 "pump_active": pump_active,
             }, merge=True)
+            logger.info(f"[Firestore] Updated device last_seen for {device_id}")
         except Exception as e:
-            logger.error(f"Firestore write error: {e}")
+            logger.error(f"Firestore devices.set error: {e}")
 
     await manager.broadcast_to_apps({
         "type": "tank_update",

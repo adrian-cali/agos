@@ -54,12 +54,14 @@ class UserProfile {
   final String uid;
   final String name;
   final String email;
+  final String location;
   final DateTime? createdAt;
 
   const UserProfile({
     required this.uid,
     required this.name,
     required this.email,
+    this.location = '',
     this.createdAt,
   });
 
@@ -71,6 +73,7 @@ class UserProfile {
       uid: doc.id,
       name: d['name'] ?? '',
       email: d['email'] ?? '',
+      location: d['location'] ?? '',
       createdAt: ts is Timestamp ? ts.toDate() : null,
     );
   }
@@ -167,10 +170,12 @@ class FirestoreService {
         );
   }
 
-  /// One-shot fetch of sensor readings for a device over the past [days] days.
+  /// One-shot fetch of sensor readings for a device.
+  /// [days] and [hours] are added together to form the lookback window.
+  /// For a 1-hour seed, pass days: 0, hours: 1.
   Future<List<SensorReading>> fetchReadings(String deviceId,
-      {int days = 30}) async {
-    final cutoff = DateTime.now().subtract(Duration(days: days));
+      {int days = 30, int hours = 0}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days, hours: hours));
     final snap = await _db
         .collection('sensor_readings')
         .where('device_id', isEqualTo: deviceId)

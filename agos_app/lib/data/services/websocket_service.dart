@@ -544,11 +544,27 @@ final pumpStateProvider =
   return notifier;
 });
 /// Global rolling 1-hour live chart buffer.
-/// Listens to all quality_update WebSocket messages — no device filter needed
-/// because the backend only streams data for the connected sensor device.
+/// Pre-seeded from Firestore on startup, then updated live via WebSocket.
+/// No device filter needed — the backend only streams data for the connected sensor.
 final liveChartPointsProvider =
     StateNotifierProvider<LiveChartNotifier, List<LiveChartPoint>>((ref) {
   final notifier = LiveChartNotifier();
+
+  // Pre-seed from Firestore: load the last 60 minutes of sensor_readings on startup.
+  ref.listen<AsyncValue<String?>>(linkedDeviceIdProvider, (_, next) {
+    final deviceId = next.valueOrNull;
+    if (deviceId == null || deviceId.isEmpty) return;
+    final service = ref.read(firestoreServiceProvider);
+    service.fetchReadings(deviceId, days: 0, hours: 1).then((readings) {
+      final points = readings.map((r) => LiveChartPoint(
+        timestamp: r.timestamp,
+        turbidity: r.turbidity,
+        ph: r.ph,
+        tds: r.tds,
+      )).toList();
+      notifier.seed(points);
+    }).catchError((_) {/* silently ignore seed errors */});
+  }, fireImmediately: true);
 
   // Listen for real-time quality_update messages from the WebSocket.
   final ws = ref.watch(webSocketServiceProvider);
