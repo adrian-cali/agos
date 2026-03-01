@@ -344,3 +344,10 @@ static const Color error      = Color(0xFFE74C3C);  // Red
 ## License
 
 This project is developed as an academic capstone project. All rights reserved.
+
+
+to run the app on phone:
+
+cd .\agos_app
+flutter devices
+flutter run -d 92535e42
