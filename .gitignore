@@ -96,3 +96,5 @@ coverage/
 .stylelintcache
 tmp/
 temp/
+
+agos-prod-firebase-adminsdk-fbsvc-2262b6c119.json
