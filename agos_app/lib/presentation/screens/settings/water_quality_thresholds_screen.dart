@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
 import '../../../data/services/firestore_service.dart';
+import '../../../data/services/websocket_service.dart' show webSocketServiceProvider;
 
 class WaterQualityThresholdsScreen extends ConsumerStatefulWidget {
   const WaterQualityThresholdsScreen({super.key});
@@ -19,32 +20,28 @@ class _WaterQualityThresholdsScreenState
   bool _saving = false;
 
   // Turbidity (NTU)
-  double _turbidityWarning = 10;
-  double _turbidityCritical = 15;
+  double _turbidityMin = 10;
+  double _turbidityWarning = 50;
 
   // pH Level
-  double _phMin = 6.5;
-  double _phMax = 8.5;
-  double _phCriticalMin = 5.5;
-  double _phCriticalMax = 9.0;
+  double _phMin = 6.0;
+  double _phMax = 9.5;
 
   // TDS (ppm)
-  double _tdsWarning = 400;
-  double _tdsCritical = 450;
+  double _tdsWarning = 1000;
 
   // Tank level (%)
   double _levelMin = 20;
+  double _levelHigh = 90;
 
   void _applyThresholds(UserThresholds t) {
+    _turbidityMin = t.turbidityMin;
     _turbidityWarning = t.turbidityMax;
-    _turbidityCritical = (t.turbidityMax * 1.5).clamp(0, 100);
     _phMin = t.phMin;
     _phMax = t.phMax;
-    _phCriticalMin = (t.phMin - 1.0).clamp(0, 14);
-    _phCriticalMax = (t.phMax + 0.5).clamp(0, 14);
     _tdsWarning = t.tdsMax;
-    _tdsCritical = (t.tdsMax * 1.125).clamp(0, 1000);
     _levelMin = t.levelMin;
+    _levelHigh = t.levelHigh;
   }
 
   void _resetDefaults() {
@@ -62,16 +59,20 @@ class _WaterQualityThresholdsScreenState
     }
     setState(() => _saving = true);
     try {
-      await ref.read(firestoreServiceProvider).saveThresholds(
-            user.uid,
-            UserThresholds(
+      final thresholds = UserThresholds(
+              turbidityMin: _turbidityMin,
               turbidityMax: _turbidityWarning,
               phMin: _phMin,
               phMax: _phMax,
               tdsMax: _tdsWarning,
               levelMin: _levelMin,
-            ),
+              levelHigh: _levelHigh,
+            );
+      await ref.read(firestoreServiceProvider).saveThresholds(
+            user.uid,
+            thresholds,
           );
+      ref.read(webSocketServiceProvider).sendThresholds(thresholds);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Thresholds saved.')));
@@ -118,7 +119,7 @@ class _WaterQualityThresholdsScreenState
                       icon: Icons.lightbulb_outline,
                       title: 'Threshold Guidelines',
                       body:
-                          'Warning thresholds trigger caution alerts. Critical thresholds trigger immediate action alerts.',
+                          'Set the optimal min/max range for each parameter. Alerts trigger when readings fall outside the set range.',
                     ),
                     const SizedBox(height: 19),
                     _buildSectionHeader('TURBIDITY (NTU)'),
@@ -128,33 +129,47 @@ class _WaterQualityThresholdsScreenState
                       iconData: Icons.opacity,
                       title: 'Water Clarity Measurement',
                       children: [
-                        _buildSliderRow(
-                          label: 'Warning Level',
-                          value: _turbidityWarning,
-                          badge: '${_turbidityWarning.round()} NTU',
-                          badgeBg: const Color(0xFFFEF3C6),
-                          badgeFg: const Color(0xFFBB4D00),
-                          min: 0,
-                          max: 100,
-                          onChanged: (v) =>
-                              setState(() => _turbidityWarning = v),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Optimal Range',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 14,
+                                color: Color(0xFF45556C),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD0FAE5),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${_turbidityMin.round()} – ${_turbidityWarning.round()} NTU',
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
+                                  color: Color(0xFF007A55),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        _buildSliderRow(
-                          label: 'Critical Level',
-                          value: _turbidityCritical,
-                          badge: '${_turbidityCritical.round()} NTU',
-                          badgeBg: const Color(0xFFFFE2E2),
-                          badgeFg: const Color(0xFFC10007),
-                          min: 0,
-                          max: 100,
-                          onChanged: (v) =>
-                              setState(() => _turbidityCritical = v),
-                        ),
+                        const SizedBox(height: 8),
+                        _buildLabel('Minimum NTU'),
+                        _buildSlider(_turbidityMin, 0, 100,
+                            (v) => setState(() => _turbidityMin = v)),
+                        const SizedBox(height: 8),
+                        _buildLabel('Maximum NTU'),
+                        _buildSlider(_turbidityWarning, 0, 200,
+                            (v) => setState(() => _turbidityWarning = v)),
                         const SizedBox(height: 12),
                         _buildHintBox(
-                          'Optimal Range: 0-20 NTU',
-                          'Recommended: Warning at 20 NTU, Critical at 30 NTU',
+                          'Optimal Range: 10–50 NTU',
+                          'Alerts trigger when readings fall outside your min–max range.',
                         ),
                       ],
                     ),
@@ -204,47 +219,9 @@ class _WaterQualityThresholdsScreenState
                         _buildSlider(
                             _phMax, 0, 14, (v) => setState(() => _phMax = v)),
                         const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Critical Limits',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 14,
-                                color: Color(0xFF45556C),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFE2E2),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                '< ${_phCriticalMin.toStringAsFixed(1)} or > ${_phCriticalMax.toStringAsFixed(1)}',
-                                style: const TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                  color: Color(0xFFC10007),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        _buildLabel('Critical Minimum'),
-                        _buildSlider(_phCriticalMin, 0, 14,
-                            (v) => setState(() => _phCriticalMin = v)),
-                        const SizedBox(height: 8),
-                        _buildLabel('Critical Maximum'),
-                        _buildSlider(_phCriticalMax, 0, 14,
-                            (v) => setState(() => _phCriticalMax = v)),
-                        const SizedBox(height: 12),
                         _buildHintBox(
                           'Optimal Range: 6.5-8.5',
-                          'Recommended: 6.5-8.5 (neutral to slightly alkaline)',
+                          'Alerts trigger when pH falls outside your min–max range.',
                         ),
                       ],
                     ),
@@ -257,32 +234,20 @@ class _WaterQualityThresholdsScreenState
                       title: 'Dissolved Mineral Content',
                       children: [
                         _buildSliderRow(
-                          label: 'Warning Level',
+                          label: 'Maximum Level',
                           value: _tdsWarning,
                           badge: '${_tdsWarning.round()} ppm',
                           badgeBg: const Color(0xFFFEF3C6),
                           badgeFg: const Color(0xFFBB4D00),
                           min: 0,
-                          max: 1000,
+                          max: 2000,
                           onChanged: (v) =>
                               setState(() => _tdsWarning = v),
                         ),
                         const SizedBox(height: 12),
-                        _buildSliderRow(
-                          label: 'Critical Level',
-                          value: _tdsCritical,
-                          badge: '${_tdsCritical.round()} ppm',
-                          badgeBg: const Color(0xFFFFE2E2),
-                          badgeFg: const Color(0xFFC10007),
-                          min: 0,
-                          max: 1000,
-                          onChanged: (v) =>
-                              setState(() => _tdsCritical = v),
-                        ),
-                        const SizedBox(height: 12),
                         _buildHintBox(
-                          'Optimal Range: 0-500 ppm',
-                          'Recommended: Warning at 500 ppm, Critical at 700 ppm',
+                          'Acceptable Range: < 1000 ppm',
+                          'Alerts trigger when TDS exceeds your maximum.',
                         ),
                       ],
                     ),
@@ -302,12 +267,23 @@ class _WaterQualityThresholdsScreenState
                           badgeFg: const Color(0xFFBB4D00),
                           min: 0,
                           max: 100,
-                          onChanged: (v) => setState(() => _levelMin = v),
+                          onChanged: (v) => setState(() => _levelMin = v.clamp(0, _levelHigh - 5)),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSliderRow(
+                          label: 'Optimal Above',
+                          value: _levelHigh,
+                          badge: '${_levelHigh.round()}%',
+                          badgeBg: const Color(0xFFD1FAE5),
+                          badgeFg: const Color(0xFF065F46),
+                          min: 0,
+                          max: 100,
+                          onChanged: (v) => setState(() => _levelHigh = v.clamp(_levelMin + 5, 100)),
                         ),
                         const SizedBox(height: 12),
                         _buildHintBox(
-                          'Optimal: Keep tank above 20%',
-                          'Recommended: Alert when level drops below 20%',
+                          'Optimal: Keep tank above ${_levelHigh.round()}%',
+                          'Alert when level drops below ${_levelMin.round()}%',
                         ),
                       ],
                     ),

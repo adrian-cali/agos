@@ -1,5 +1,10 @@
 ﻿import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/services/firestore_service.dart'
+    show firestoreAlertsProvider, linkedDeviceIdProvider;
+import '../../data/services/websocket_service.dart'
+    show AlertItem, alertsProvider, completedAlertsProvider, dismissedAlertsProvider;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Notification modal – blurred dark overlay with dismissible notification cards
@@ -25,12 +30,9 @@ void showNotificationModal(BuildContext context) {
   );
 }
 
-class _NotificationModal extends StatefulWidget {
-  const _NotificationModal();
-
-  @override
-  State<_NotificationModal> createState() => _NotificationModalState();
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal view-model derived from AlertItem
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _NotificationData {
   final String id;
@@ -39,7 +41,6 @@ class _NotificationData {
   final String title;
   final String message;
   final String time;
-  final bool showActions;
   bool dismissed = false;
   bool completed = false;
 
@@ -50,90 +51,85 @@ class _NotificationData {
     required this.title,
     required this.message,
     required this.time,
-    this.showActions = true,
   });
+
+  static _NotificationData fromAlert(AlertItem a) {
+    // Icon/colour by type + severity
+    IconData icon;
+    Color bg;
+
+    if (a.type == 'threshold_exceeded') {
+      // Use the parameter-specific gradient color matching the dashboard icon
+      final desc = a.description.toLowerCase();
+      if (desc.contains('turbidity')) {
+        icon = Icons.opacity_outlined;
+        bg = const Color(0xFF00D3F2); // cyan — turbidity
+      } else if (desc.contains('ph')) {
+        icon = Icons.science_outlined;
+        bg = const Color(0xFFC27AFF); // purple — pH
+      } else if (desc.contains('tds')) {
+        icon = Icons.water_outlined;
+        bg = const Color(0xFF7C86FF); // blue-violet — TDS
+      } else {
+        icon = Icons.warning_amber_outlined;
+        bg = const Color(0xFFF59E0B); // fallback amber
+      }
+    } else if (a.severity == 'critical') {
+      icon = Icons.error_outline;
+      bg = const Color(0xFFFF5252);
+    } else if (a.severity == 'warning') {
+      icon = Icons.warning_amber_outlined;
+      bg = const Color(0xFFFFA726);
+    } else if (a.type == 'water_quality') {
+      icon = Icons.water_drop_outlined;
+      bg = const Color(0xFF00C49A);
+    } else if (a.type == 'system') {
+      icon = Icons.settings_outlined;
+      bg = const Color(0xFF9C27B0);
+    } else {
+      icon = Icons.notifications_outlined;
+      bg = const Color(0xFF00B8DB);
+    }
+
+    return _NotificationData(
+      id: a.id,
+      icon: icon,
+      iconBg: bg,
+      title: a.title,
+      message: a.description,
+      time: _fmtAgo(DateTime.tryParse(a.timestamp) ?? DateTime.now()),
+    );
+  }
+
+  static String _fmtAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
 }
 
-class _NotificationModalState extends State<_NotificationModal>
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal widget
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NotificationModal extends ConsumerStatefulWidget {
+  const _NotificationModal();
+
+  @override
+  ConsumerState<_NotificationModal> createState() =>
+      _NotificationModalState();
+}
+
+class _NotificationModalState extends ConsumerState<_NotificationModal>
     with SingleTickerProviderStateMixin {
   late AnimationController _entryController;
   final ScrollController _scrollController = ScrollController();
   double _dragOffset = 0.0;
 
-  final List<_NotificationData> _notifications = [
-    _NotificationData(
-      id: '1',
-      icon: Icons.check_circle_outline,
-      iconBg: const Color(0xFF00C49A),
-      title: 'Water Quality Optimal',
-      message: 'All water quality parameters are within acceptable ranges.',
-      time: '5h ago',
-    ),
-    _NotificationData(
-      id: '2',
-      icon: Icons.notifications_outlined,
-      iconBg: const Color(0xFF00B8DB),
-      title: 'Scheduled Maintenance Due',
-      message: 'Monthly filter cleaning is scheduled for tomorrow.',
-      time: '2d ago',
-    ),
-    _NotificationData(
-      id: '3',
-      icon: Icons.error_outline,
-      iconBg: const Color(0xFFFF5252),
-      title: 'Low Water Level',
-      message: 'Storage tank is at 18%. System is not yet operational',
-      time: '1d ago',
-      showActions: false,
-    ),
-    _NotificationData(
-      id: '4',
-      icon: Icons.opacity_outlined,
-      iconBg: const Color(0xFF5DCCFC),
-      title: 'High Turbidity Detected',
-      message:
-          'Turbidity level has risen to 8.5 NTU, exceeding the safe limit of 5 NTU. Consider filtering.',
-      time: '3d ago',
-    ),
-    _NotificationData(
-      id: '5',
-      icon: Icons.science_outlined,
-      iconBg: const Color(0xFFFFA726),
-      title: 'pH Level Warning',
-      message:
-          'Water pH is at 8.9, slightly above the normal range (6.5–8.5). Monitor closely.',
-      time: '3d ago',
-    ),
-    _NotificationData(
-      id: '6',
-      icon: Icons.water_drop_outlined,
-      iconBg: const Color(0xFF00C49A),
-      title: 'Tank Refilled Successfully',
-      message:
-          'Storage tank has been refilled to 95% capacity. System is fully operational.',
-      time: '4d ago',
-      showActions: false,
-    ),
-    _NotificationData(
-      id: '7',
-      icon: Icons.sensors_outlined,
-      iconBg: const Color(0xFF9C27B0),
-      title: 'Sensor Calibration Needed',
-      message:
-          'Turbidity sensor may need recalibration. Last calibration was 30 days ago.',
-      time: '5d ago',
-    ),
-    _NotificationData(
-      id: '8',
-      icon: Icons.bolt_outlined,
-      iconBg: const Color(0xFFFF5252),
-      title: 'Power Interruption Detected',
-      message:
-          'ESP32 controller experienced a brief power interruption. Data may have been lost.',
-      time: '6d ago',
-      showActions: false,
-    ),
-  ];
+  // Local completed state — keyed by alert id (not persisted, per-session)
+  // NOTE: replaced by completedAlertsProvider (persisted via SharedPreferences)
 
   @override
   void initState() {
@@ -149,6 +145,29 @@ class _NotificationModalState extends State<_NotificationModal>
     _entryController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Merge Firestore + WS alerts, deduplicate by id, newest-first.
+  List<_NotificationData> _buildNotifications() {
+    final deviceId =
+        ref.watch(linkedDeviceIdProvider).valueOrNull ?? '';
+    final fsAlerts =
+        ref.watch(firestoreAlertsProvider(deviceId)).valueOrNull ?? [];
+    final wsAlerts = ref.watch(alertsProvider);
+    final dismissed = ref.watch(dismissedAlertsProvider).ids;
+    final completed = ref.watch(completedAlertsProvider);
+
+    final seen = <String>{};
+    final merged = <_NotificationData>[];
+    for (final a in [...wsAlerts, ...fsAlerts]) {
+      if (seen.contains(a.id)) continue;
+      seen.add(a.id);
+      final nd = _NotificationData.fromAlert(a)
+        ..dismissed = dismissed.contains(a.id)
+        ..completed = completed.contains(a.id);
+      merged.add(nd);
+    }
+    return merged;
   }
 
   Widget _buildAnimatedCard(int index, Widget child) {
@@ -171,7 +190,8 @@ class _NotificationModalState extends State<_NotificationModal>
 
   @override
   Widget build(BuildContext context) {
-    final visible = _notifications.where((n) => !n.dismissed).toList();
+    final allNotifications = _buildNotifications();
+    final visible = allNotifications.where((n) => !n.dismissed).toList();
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Stack(
@@ -255,7 +275,7 @@ class _NotificationModalState extends State<_NotificationModal>
                                   key: ValueKey(n.id),
                                   direction: DismissDirection.startToEnd,
                                   onDismissed: (_) =>
-                                      setState(() => n.dismissed = true),
+                                      ref.read(dismissedAlertsProvider.notifier).dismiss(n.id),
                                   background: Container(
                                     alignment: Alignment.centerLeft,
                                     padding: const EdgeInsets.only(left: 20),
@@ -271,10 +291,9 @@ class _NotificationModalState extends State<_NotificationModal>
                                   ),
                                   child: _NotificationCard(
                                     data: n,
-                                    onClear: () =>
-                                        setState(() => n.dismissed = true),
+                                    onClear: () => ref.read(dismissedAlertsProvider.notifier).dismiss(n.id),
                                     onMarkCompleted: () =>
-                                        setState(() => n.completed = true),
+                                        ref.read(completedAlertsProvider.notifier).markCompleted(n.id),
                                   ),
                                 ),
                               ),
@@ -342,18 +361,20 @@ class _NotificationModalState extends State<_NotificationModal>
                     size: 20,
                   ),
                 ),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFF6B6B),
-                      shape: BoxShape.circle,
+                // Red dot shown only when there are visible notifications
+                if (visible.isNotEmpty)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFF6B6B),
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -471,75 +492,73 @@ class _NotificationCard extends StatelessWidget {
             ],
           ),
           // ── Mark as Completed button / Completed tag ────────────────────
-          if (data.showActions) ...[
-            if (!data.completed) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: GestureDetector(
-                  onTap: onMarkCompleted,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)],
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Mark as Completed',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ] else ...[
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
+          if (!data.completed) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: GestureDetector(
+                onTap: onMarkCompleted,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00C49A).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: const Color(0xFF00C49A),
-                      width: 1,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)],
                     ),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 13,
-                        color: Color(0xFF00C49A),
+                  child: const Center(
+                    child: Text(
+                      'Mark as Completed',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        'Completed',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF00C49A),
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ],
+            ),
+          ] else ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00C49A).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF00C49A),
+                    width: 1,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 13,
+                      color: Color(0xFF00C49A),
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Completed',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF00C49A),
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ],
       ),

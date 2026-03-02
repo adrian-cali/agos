@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/constants/connection_method_design.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../data/services/ble_provisioning_service.dart';
 
 class BluetoothSetup2Screen extends StatefulWidget {
   const BluetoothSetup2Screen({super.key});
@@ -13,25 +15,90 @@ class BluetoothSetup2Screen extends StatefulWidget {
 class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen> {
   bool _locationPermission = false;
   bool _bluetoothPermission = false;
+  bool _isRequesting = false;
+  final _ble = BleProvisioningService();
 
   bool get _allPermissionsGranted =>
       _locationPermission && _bluetoothPermission;
 
-  void _grantPermission(String which) {
-    setState(() {
-      if (which == 'location') {
-        _locationPermission = true;
-      } else if (which == 'bluetooth') {
-        _bluetoothPermission = true;
-      }
-    });
+  @override
+  void initState() {
+    super.initState();
+    // In simulation mode, pre-grant both permissions and auto-advance
+    if (_ble.simulationMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _locationPermission = true;
+          _bluetoothPermission = true;
+        });
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) Navigator.pushNamed(context, '/ready-to-scan');
+        });
+      });
+    }
+  }
 
-    // when all permissions granted, proceed to scanning (Ready to Scan)
+  Future<void> _grantPermission(String which) async {
+    if (_isRequesting) return;
+
+    // In simulation mode, just mark as granted and advance
+    if (_ble.simulationMode) {
+      setState(() {
+        if (which == 'location') _locationPermission = true;
+        if (which == 'bluetooth') _bluetoothPermission = true;
+      });
+      if (_locationPermission && _bluetoothPermission) {
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) Navigator.pushNamed(context, '/ready-to-scan');
+        });
+      }
+      return;
+    }
+
+    setState(() => _isRequesting = true);
+
+    try {
+      if (which == 'location') {
+        final status = await Permission.locationWhenInUse.request();
+        setState(() => _locationPermission = status.isGranted);
+        if (!status.isGranted && mounted) {
+          _showDeniedSnack('Location permission is required for Bluetooth scanning.');
+        }
+      } else if (which == 'bluetooth') {
+        // On Android 12+ request SCAN + CONNECT; on older versions they are
+        // automatically granted together with BLUETOOTH.
+        final statuses = await [
+          Permission.bluetoothScan,
+          Permission.bluetoothConnect,
+        ].request();
+        final granted = statuses.values.every((s) => s.isGranted);
+        setState(() => _bluetoothPermission = granted);
+        if (!granted && mounted) {
+          _showDeniedSnack('Bluetooth permission is required to connect to your device.');
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isRequesting = false);
+    }
+
+    // Auto-advance when both are granted
     if (_locationPermission && _bluetoothPermission) {
       Future.delayed(const Duration(milliseconds: 250), () {
         if (mounted) Navigator.pushNamed(context, '/ready-to-scan');
       });
     }
+  }
+
+  void _showDeniedSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'Settings',
+          onPressed: openAppSettings,
+        ),
+      ),
+    );
   }
 
   @override
@@ -172,7 +239,7 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen> {
                         onPressed: _allPermissionsGranted
                             ? () => Navigator.pushNamed(context, '/ready-to-scan')
                             : null,
-                        child: const Text('Next', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.neutral1)),
+                        child: const Text('Next', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color.fromARGB(255, 255, 255, 255))),
                       ),
                     ),
                   ),

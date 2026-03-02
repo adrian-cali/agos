@@ -28,12 +28,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   late AnimationController _cardController;
   late List<Particle> _particles;
 
+  // Clock for "Updated X ago"
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
+
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _generateParticles();
     _loadHistoricalData();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
   }
 
   void _initializeAnimations() {
@@ -89,26 +96,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
     _particleController.dispose();
     _cardController.dispose();
     super.dispose();
+  }
+
+  String _formatAgo(DateTime last) {
+    final diff = _now.difference(last);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
   String _qualityStatus(double value, String metric, UserThresholds t) {
     switch (metric) {
       case 'turbidity':
-        if (value <= t.turbidityMax) return '● Optimal';
-        if (value <= t.turbidityMax * 2) return '● Warning';
-        return '● Critical';
+        if (value >= t.turbidityMin && value <= t.turbidityMax) return '● Optimal';
+        return '● Warning';
       case 'ph':
         if (value >= t.phMin && value <= t.phMax) return '● Optimal';
-        if (value >= (t.phMin - 1) && value <= (t.phMax + 1)) return '● Warning';
-        return '● Critical';
+        return '● Warning';
       case 'tds':
-        if (value < t.tdsMax) return '● Optimal';
-        if (value < t.tdsMax * 2) return '● Warning';
-        return '● Critical';
+        if (value <= t.tdsMax) return '● Optimal';
+        return '● Warning';
       default:
         return '● Unknown';
     }
@@ -116,7 +128,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   Color _statusColor(String status) {
     if (status.contains('Warning')) return const Color(0xFFF59E0B);
-    if (status.contains('Critical')) return const Color(0xFFEF4444);
     if (status == '● --') return const Color(0xFFB0BEC5); // no data → grey
     return const Color(0xFF009966);
   }
@@ -125,7 +136,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     // ── Real device ID from Firestore ──────────────────────────────────────
-    final deviceId = ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
+    final deviceId = ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
     // ── User profile (for location display) ───────────────────────────────
     final userProfile = ref.watch(userProfileProvider).valueOrNull;
     final deviceLocation = userProfile?.location ?? '';
@@ -135,6 +146,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     // ── User thresholds ────────────────────────────────────────────────────
     final thresholds = ref.watch(userThresholdsProvider).valueOrNull
         ?? const UserThresholds();
+    // ── Connection state ───────────────────────────────────────────────────
+    final isLive = ref.watch(wsConnectedProvider);
+    final lastData = ref.watch(wsLastDataProvider);
 
     // ── WebSocket fallback (for Windows where Firestore threading may drop data)
     final waterQuality = ref.watch(waterQualityProvider);
@@ -175,7 +189,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             children: [
               // Header with blue gradient and particles (no animation)
-              _buildHeader(deviceLocation),
+              _buildHeader(deviceLocation, isLive: isLive, lastData: lastData),
               // Scrollable content
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 25),
@@ -199,7 +213,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               turbidityStr,
                               turbidityStatus,
                               turbidityProgress,
-                              'Target: < ${thresholds.turbidityMax.toStringAsFixed(0)} NTU',
+                              'Target: ${thresholds.turbidityMin.toStringAsFixed(0)}–${thresholds.turbidityMax.toStringAsFixed(0)} NTU',
                               const LinearGradient(
                                 colors: [Color(0xFF00D3F2), Color(0xFF2B7FFF)],
                               ),
@@ -265,7 +279,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  Widget _buildHeader(String deviceLocation) {
+  Widget _buildHeader(String deviceLocation, {bool isLive = false, DateTime? lastData}) {
     return Container(
       // height: 278,
       width: double.infinity,
@@ -335,6 +349,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               size: 20,
                             ),
                           ),
+                        if (ref.watch(hasUnreadAlertsProvider))
                         Positioned(
                           top: 0,
                           right: 0,
@@ -405,20 +420,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       // Live indicator and last updated
                       Row(
                         children: [
-                          // Live indicator (same style as home page)
+                          // Live/Idle indicator
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.0),
                               border: Border.all(
-                                color: const Color(0xFF53EAFD),
+                                color: isLive ? const Color(0xFF53EAFD) : Colors.white.withValues(alpha: 0.6),
                                 width: 0.8,
                               ),
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF53EAFD).withValues(alpha: 0.32),
-                                  blurRadius: 11,
+                                  color: (isLive ? const Color(0xFF53EAFD) : Colors.white)
+                                      .withValues(alpha: 0.20),
+                                  blurRadius: 8,
                                   offset: const Offset(0, 0),
                                 ),
                               ],
@@ -429,16 +445,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 Container(
                                   width: 12,
                                   height: 12,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF53EAFD),
+                                  decoration: BoxDecoration(
+                                    color: isLive ? const Color(0xFF53EAFD) : Colors.white.withValues(alpha: 0.7),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  'Live',
+                                  isLive ? 'Live' : 'Idle',
                                   style: TextStyle(
-                                    color: const Color(0xFF53EAFD),
+                                    color: isLive ? const Color(0xFF53EAFD) : Colors.white.withValues(alpha: 0.85),
                                     fontSize: 12,
                                     fontWeight: FontWeight.w400,
                                     fontFamily: 'Inter',
@@ -450,9 +466,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           const SizedBox(width: 7),
                           // Updated text
                           Text(
-                            '• Updated 0s ago',
+                            lastData != null
+                                ? '• Updated ${_formatAgo(lastData)}'
+                                : '• Waiting for data...',
                             style: TextStyle(
-                              color: const Color(0xFF53EAFD),
+                              color: isLive
+                                  ? const Color(0xFF53EAFD)
+                                  : Colors.white.withValues(alpha: 0.7),
                               fontSize: 12,
                               fontFamily: 'Inter',
                               fontWeight: FontWeight.w400,
@@ -893,6 +913,14 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   Timer? _refreshTimer;
   int _refreshTick = 0; // increments every minute to force stream re-subscription
 
+  // X-axis zoom/pan state
+  double _xZoom = 1.0;   // 1.0 = full period; >1 = zoomed in
+  double _xPanOffset = 0.0; // pan offset in X units (minutes or hours)
+  double _scaleStartZoom = 1.0;
+  double _scaleStartOffset = 0.0;
+  double _effectiveMaxX = 60.0; // updated each frame from _buildChartData
+  bool _isZooming = false; // true during pinch — disables chart touch to allow pinch
+
   @override
   void initState() {
     super.initState();
@@ -912,8 +940,8 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     super.dispose();
   }
 
-  // Per-metric ranges
-  double get _yMin {
+  // Per-metric fallback ranges (used when no data is available)
+  double get _yMinFallback {
     switch (widget.label) {
       case 'pH': return 0;
       case 'TDS': return 0;
@@ -921,20 +949,57 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     }
   }
 
-  double get _yMax {
+  double get _yMaxFallback {
     switch (widget.label) {
       case 'pH': return 14;
       case 'TDS': return 1000;
-      default: return 30; // Turbidity NTU
+      default: return 60; // Turbidity NTU
     }
   }
 
-  double get _yInterval {
-    switch (widget.label) {
-      case 'pH': return 2;
-      case 'TDS': return 200;
-      default: return 10; // Turbidity
+  /// Compute Y range dynamically from spot data with 10% padding.
+  /// Falls back to metric defaults when no data.
+  ({double min, double max, double interval}) _computeYRange(List<FlSpot> spots) {
+    if (spots.isEmpty) {
+      final fallbackInterval = widget.label == 'pH'
+          ? 2.0
+          : widget.label == 'TDS'
+              ? 200.0
+              : 10.0;
+      return (min: _yMinFallback, max: _yMaxFallback, interval: fallbackInterval);
     }
+    final values = spots.map((s) => s.y).toList();
+    final dataMin = values.reduce((a, b) => a < b ? a : b);
+    final dataMax = values.reduce((a, b) => a > b ? a : b);
+    final range = (dataMax - dataMin).abs().clamp(0.001, double.infinity);
+    final padding = range * 0.15;
+    final yMin = (dataMin - padding).floorToDouble().clamp(0.0, double.infinity);
+    final yMax = (dataMax + padding).ceilToDouble();
+    // Auto-interval: aim for ~5 lines
+    final rawInterval = (yMax - yMin) / 5;
+    double interval;
+    if (rawInterval <= 0.5) {
+      interval = 0.5;
+    } else if (rawInterval <= 1) {
+      interval = 1;
+    } else if (rawInterval <= 2) {
+      interval = 2;
+    } else if (rawInterval <= 5) {
+      interval = 5;
+    } else if (rawInterval <= 10) {
+      interval = 10;
+    } else if (rawInterval <= 25) {
+      interval = 25;
+    } else if (rawInterval <= 50) {
+      interval = 50;
+    } else if (rawInterval <= 100) {
+      interval = 100;
+    } else if (rawInterval <= 200) {
+      interval = 200;
+    } else {
+      interval = (rawInterval / 100).ceil() * 100;
+    }
+    return (min: yMin, max: yMax, interval: interval);
   }
 
   String _formatY(double v) {
@@ -947,7 +1012,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
 
   // ── Firestore integration ─────────────────────────────────────────────────
   String get _deviceId =>
-      ref.watch(linkedDeviceIdProvider).valueOrNull ?? '';
+      ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
 
   String get _firestoreField {
     switch (widget.label) {
@@ -1278,11 +1343,53 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                 ),
               );
             }
-            return SizedBox(
-              height: 200,
-              child: LineChart(
-                _buildChartData(spots),
-                duration: const Duration(milliseconds: 300),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onScaleStart: (details) {
+                _scaleStartZoom = _xZoom;
+                _scaleStartOffset = _xPanOffset;
+                if (details.pointerCount >= 2) {
+                  setState(() => _isZooming = true);
+                }
+              },
+              onScaleEnd: (_) {
+                if (_isZooming) setState(() => _isZooming = false);
+              },
+              onScaleUpdate: (details) {
+                setState(() {
+                  if (details.pointerCount >= 2) {
+                    _isZooming = true;
+                    // Pinch zoom: scale X axis only
+                    final newZoom = (_scaleStartZoom * details.horizontalScale).clamp(1.0, 10.0);
+                    // Keep the view centered when zooming
+                    final oldWindow = _effectiveMaxX / _xZoom;
+                    final newWindow = _effectiveMaxX / newZoom;
+                    final chartWidth = 300.0;
+                    final focalRatio = details.localFocalPoint.dx / chartWidth;
+                    _xZoom = newZoom;
+                    _xPanOffset = (_xPanOffset + focalRatio * (oldWindow - newWindow))
+                        .clamp(0.0, (_effectiveMaxX - newWindow).clamp(0.0, double.infinity));
+                  } else {
+                    // Single-finger pan
+                    final window = _effectiveMaxX / _xZoom;
+                    final panDelta = -details.focalPointDelta.dx * (window / 300.0);
+                    _xPanOffset = (_xPanOffset + panDelta)
+                        .clamp(0.0, (_effectiveMaxX - window).clamp(0.0, double.infinity));
+                  }
+                });
+              },
+              onDoubleTap: () => setState(() {
+                _xZoom = 1.0;
+                _xPanOffset = 0.0;
+              }),
+              child: SizedBox(
+                height: 200,
+                child: ClipRect(
+                  child: LineChart(
+                    _buildChartData(spots),
+                    duration: const Duration(milliseconds: 300),
+                  ),
+                ),
               ),
             );
           }),
@@ -1294,7 +1401,11 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   Widget _buildPeriodBtn(String label, TimePeriod period) {
     final isSelected = _selectedPeriod == period;
     return GestureDetector(
-      onTap: () => setState(() => _selectedPeriod = period),
+      onTap: () => setState(() {
+        _selectedPeriod = period;
+        _xZoom = 1.0;
+        _xPanOffset = 0.0;
+      }),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1322,6 +1433,38 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     );
   }
 
+  /// Split spots into contiguous segments, breaking where consecutive points
+  /// are more than [gapThreshold] X-units apart (e.g., minutes for 1H/24H).
+  /// This prevents the chart from drawing a line through periods of no data.
+  List<List<FlSpot>> _splitIntoSegments(List<FlSpot> spots) {
+    if (spots.isEmpty) return [];
+    // Gap threshold in X units:
+    //  1H view  → minutes, threshold = 2 min (readings every ~5s, 2 min = big gap)
+    // 24H view  → minutes, threshold = 30 min
+    //  7D view  → hours,   threshold = 2 h
+    // 30D view  → hours,   threshold = 6 h
+    final double gapThreshold;
+    switch (_selectedPeriod) {
+      case TimePeriod.oneHour: gapThreshold = 2.0; break;
+      case TimePeriod.twentyFourHours: gapThreshold = 30.0; break;
+      case TimePeriod.sevenDays: gapThreshold = 2.0; break;
+      case TimePeriod.thirtyDays: gapThreshold = 6.0; break;
+    }
+
+    final segments = <List<FlSpot>>[];
+    var current = <FlSpot>[spots.first];
+    for (int i = 1; i < spots.length; i++) {
+      final gap = spots[i].x - spots[i - 1].x;
+      if (gap > gapThreshold) {
+        if (current.isNotEmpty) segments.add(current);
+        current = [];
+      }
+      current.add(spots[i]);
+    }
+    if (current.isNotEmpty) segments.add(current);
+    return segments;
+  }
+
   LineChartData _buildChartData(List<FlSpot> spots) {
     // For 1H live view: always show the full 60-min window so the waveform
     // grows from left to right and the right edge stays at "now".
@@ -1331,10 +1474,24 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
         : (spots.isNotEmpty
             ? (spots.last.x).ceilToDouble().clamp(spots.last.x, _maxX)
             : _maxX);
+    _effectiveMaxX = effectiveMaxX; // save for gesture handler
+
+    // Dynamic Y range based on actual data
+    final yRange = _computeYRange(spots);
+    final yMin = yRange.min;
+    final yMax = yRange.max;
+    final yInterval = yRange.interval;
+
+    // X-axis zoom/pan: compute the visible window
+    final windowSize = effectiveMaxX / _xZoom;
+    final visMinX = _xPanOffset.clamp(0.0, (effectiveMaxX - windowSize).clamp(0.0, double.infinity));
+    final visMaxX = (visMinX + windowSize).clamp(visMinX, effectiveMaxX);
+
+    final segments = _splitIntoSegments(spots);
+
     return LineChartData(
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
+      lineBarsData: segments.map((segSpots) => LineChartBarData(
+          spots: segSpots,
           isCurved: true,
           curveSmoothness: 0.35,
           gradient: widget.gradient,
@@ -1352,8 +1509,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
               end: Alignment.bottomCenter,
             ),
           ),
-        ),
-      ],
+        )).toList(),
       titlesData: FlTitlesData(
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -1361,9 +1517,9 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 36,
-            interval: _yInterval,
+            interval: yInterval,
             getTitlesWidget: (value, meta) {
-              if (value < _yMin || value > _yMax) return const SizedBox.shrink();
+              if (value < yMin || value > yMax) return const SizedBox.shrink();
               return Text(
                 _formatY(value),
                 style: const TextStyle(color: Color(0xFF64748B), fontSize: 9, fontFamily: 'Inter'),
@@ -1404,20 +1560,23 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       gridData: FlGridData(
         show: true,
         drawVerticalLine: false,
-        horizontalInterval: _yInterval,
+        horizontalInterval: yInterval,
         getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFE8F0F7), strokeWidth: 1),
       ),
       borderData: FlBorderData(show: false),
-      minX: 0,
-      maxX: effectiveMaxX,
-      minY: _yMin,
-      maxY: _yMax,
+      clipData: const FlClipData.all(),
+      minX: visMinX,
+      maxX: visMaxX,
+      minY: yMin,
+      maxY: yMax,
       lineTouchData: LineTouchData(
-        enabled: true,
+        enabled: !_isZooming,  // disable touch during pinch so gesture detector can work
         touchTooltipData: LineTouchTooltipData(
           tooltipBgColor: Colors.white,
           tooltipBorder: const BorderSide(color: Color(0xFFE2E8F0)),
           tooltipRoundedRadius: 8.0,
+          fitInsideHorizontally: true,
+          fitInsideVertically: true,
           getTooltipItems: (touchedSpots) {
             final String unit;
             switch (widget.label) {

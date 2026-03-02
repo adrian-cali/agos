@@ -18,16 +18,21 @@ _pump_manual_remaining = 0  # seconds remaining in manual mode
 
 def generate_sensor_data(spike: bool = False) -> dict:
     if spike:
-        turbidity = random.uniform(8.0, 15.0)   # exceeds 5 NTU threshold
-        ph = random.uniform(5.0, 6.0)            # below 6.5 threshold
-        tds = random.uniform(520, 650)            # exceeds 500 ppm threshold
+        # Bad-water spike: push turbidity outside optimal range (critical territory)
+        turbidity = random.uniform(110.0, 140.0)  # above critical max of 100 NTU
+        ph = random.uniform(5.0, 5.8)             # below critical min of 6.0
+        tds = random.uniform(1100, 1400)           # above warning max of 1000 ppm
     else:
-        turbidity = random.uniform(1.5, 4.5)
-        ph = random.uniform(6.8, 7.8)
-        tds = random.uniform(200, 450)
+        # Normal readings: stay within optimal ranges
+        # Turbidity optimal: 10–50 NTU
+        turbidity = random.uniform(12.0, 45.0)
+        # pH optimal: 6.0–9.5
+        ph = random.uniform(6.5, 8.5)
+        # TDS optimal: < 1000 ppm
+        tds = random.uniform(200, 750)
 
-    # Auto pump logic (only active when not in manual mode)
-    auto_pump = turbidity > 5 or not (6.5 <= ph <= 8.3) or tds > 500
+    # Auto pump logic — using updated default thresholds
+    auto_pump = not (10 <= turbidity <= 50) or not (6.0 <= ph <= 9.5) or tds > 1000
     pump_active = _pump_manual_on or auto_pump
 
     return {

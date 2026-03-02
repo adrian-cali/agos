@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.agos" "\0"
-            VALUE "FileDescription", "agos_app" "\0"
+            VALUE "FileDescription", "AGOS" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "agos_app" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.agos. All rights reserved." "\0"
             VALUE "OriginalFilename", "agos_app.exe" "\0"
-            VALUE "ProductName", "agos_app" "\0"
+            VALUE "ProductName", "AGOS" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

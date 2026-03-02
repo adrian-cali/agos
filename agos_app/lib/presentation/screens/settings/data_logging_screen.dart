@@ -19,8 +19,6 @@ class DataLoggingScreen extends ConsumerStatefulWidget {
 }
 
 class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
-  bool _automaticLogging = true;
-  bool _cloudSync = false;
   int _retentionDays = 30; // 7, 30, or 90
 
   // Don't show loading state — show defaults immediately, update silently
@@ -31,7 +29,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   bool _savingPrefs = false;
 
   String get _deviceId =>
-      ref.read(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
+      ref.read(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
 
   @override
   void initState() {
@@ -53,8 +51,6 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
           .timeout(const Duration(seconds: 5));
       if (mounted) {
         setState(() {
-          _automaticLogging = prefs['automaticLogging'] as bool? ?? true;
-          _cloudSync = prefs['cloudSync'] as bool? ?? false;
           _retentionDays = prefs['retentionDays'] as int? ?? 30;
           _loadingPrefs = false;
         });
@@ -66,7 +62,11 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   Future<List<SensorReading>> _fetchReadings() async {
     final service = ref.read(firestoreServiceProvider);
-    return service.fetchReadings(_deviceId, days: _retentionDays);
+    // Cap at 7 days to stay within Firestore free-tier read limits.
+    // Upgrade to Blaze plan or reduce retention to export more.
+    const int maxExportDays = 7;
+    final exportDays = _retentionDays.clamp(1, maxExportDays);
+    return service.fetchReadings(_deviceId, days: exportDays);
   }
 
   Future<void> _exportCsv() async {
@@ -79,10 +79,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
       }
       final buf = StringBuffer();
       buf.writeln(
-          'timestamp,device_id,turbidity_ntu,ph,tds_ppm,level_pct,flow_rate,pump_active');
+          'timestamp,device_id,turbidity_ntu,ph,tds_ppm,level_pct,volume_liters,flow_rate,pump_active');
       for (final r in readings) {
         buf.writeln(
-            '${r.timestamp.toIso8601String()},${r.deviceId},${r.turbidity},${r.ph},${r.tds},${r.level},${r.flowRate},${r.pumpActive}');
+            '${r.timestamp.toIso8601String()},${r.deviceId},${r.turbidity},${r.ph},${r.tds},${r.level},${r.volume},${r.flowRate},${r.pumpActive}');
       }
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/agos_export.csv');
@@ -111,7 +111,8 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                 'turbidity': r.turbidity,
                 'ph': r.ph,
                 'tds': r.tds,
-                'level': r.level,
+                'level_pct': r.level,
+                'volume_liters': r.volume,
                 'flow_rate': r.flowRate,
                 'pump_active': r.pumpActive,
               })
@@ -224,7 +225,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   pw.Widget _dataTable(List<SensorReading> readings) {
     return pw.Table.fromTextArray(
-      headers: ['Time', 'Turb', 'pH', 'TDS', 'Level%'],
+      headers: ['Time', 'Turb', 'pH', 'TDS', 'Level%', 'Vol(L)'],
       data: readings
           .map((r) => [
                 '${_pad(r.timestamp.hour)}:${_pad(r.timestamp.minute)}',
@@ -232,6 +233,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                 r.ph.toStringAsFixed(2),
                 r.tds.toStringAsFixed(0),
                 r.level.toStringAsFixed(1),
+                r.volume.toStringAsFixed(1),
               ])
           .toList(),
       cellStyle: const pw.TextStyle(fontSize: 8),
@@ -246,8 +248,6 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
       if (user == null) return;
       final service = ref.read(firestoreServiceProvider);
       await service.saveDataLoggingPrefs(user.uid, {
-        'automaticLogging': _automaticLogging,
-        'cloudSync': _cloudSync,
         'retentionDays': _retentionDays,
       });
       if (mounted) _snack('Preferences saved.');
@@ -280,68 +280,42 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildSectionHeader('LOGGING SETTING'),
-                    const SizedBox(height: 16),
-                    _buildCard(
-                      iconData: Icons.bar_chart_outlined,
-                      title: 'Automatic Logging',
-                      subtitle: 'Record sensor data continuously',
-                      trailing: _loadingPrefs
-                          ? const SizedBox(
-                              width: 32,
-                              height: 18,
-                              child: Center(
-                                child: SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                ),
-                              ),
-                            )
-                          : _buildToggle(
-                              value: _automaticLogging,
-                              onChanged: _savingPrefs
-                                  ? null
-                                  : (v) {
-                                      setState(() => _automaticLogging = v);
-                                      _savePrefs();
-                                    },
-                            ),
-                    ),
-                    const SizedBox(height: 5),
-                    _buildCard(
-                      iconData: Icons.cloud_outlined,
-                      title: 'Cloud Sync',
-                      subtitle: 'Backup data to cloud storage',
-                      trailing: _loadingPrefs
-                          ? const SizedBox(
-                              width: 32,
-                              height: 18,
-                              child: Center(
-                                child: SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                ),
-                              ),
-                            )
-                          : _buildToggle(
-                              value: _cloudSync,
-                              onChanged: _savingPrefs
-                                  ? null
-                                  : (v) {
-                                      setState(() => _cloudSync = v);
-                                      _savePrefs();
-                                    },
-                            ),
-                    ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 24),
+                    _buildSectionHeader('LOGGING SETTINGS'),
+                    const SizedBox(height: 8),
                     _buildRetentionCard(),
                     const SizedBox(height: 24),
                     _buildSectionHeader('EXPORT DATA'),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    // Free-tier quota note
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F9FF),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFFBAE6FD), width: 1),
+                      ),
+                      child: Row(
+                        children: const [
+                          Icon(Icons.info_outline,
+                              size: 16, color: Color(0xFF0369A1)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Exports are limited to the last 7 days to stay within free-tier read limits.',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 12,
+                                color: Color(0xFF0369A1),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     _buildExportCard(
                       iconGradient: const [
                         Color(0xFF00D492),
@@ -780,7 +754,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         title: const Text('Clear All Data',
             style: TextStyle(color: Color(0xFF141A1E))),
         content: const Text(
-            'Permanently delete all stored sensor data. This action cannot be undone.'),
+            'Permanently delete all stored sensor readings for this device. This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -788,11 +762,9 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                 style: TextStyle(color: Color(0xFF141A1E))),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('All data cleared.')),
-              );
+              await _clearAllData();
             },
             child: const Text('Clear',
                 style: TextStyle(color: Color(0xFFE7000B))),
@@ -800,5 +772,18 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _clearAllData() async {
+    setState(() => _savingPrefs = true);
+    try {
+      final service = ref.read(firestoreServiceProvider);
+      await service.deleteAllReadings(_deviceId);
+      if (mounted) _snack('All sensor data cleared.');
+    } catch (e) {
+      if (mounted) _snack('Failed to clear data: $e');
+    } finally {
+      if (mounted) setState(() => _savingPrefs = false);
+    }
   }
 }

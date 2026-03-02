@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/websocket_service.dart';
 import '../../../data/services/firestore_service.dart'
-    show latestReadingProvider, linkedDeviceIdProvider;
+    show latestReadingProvider, linkedDeviceIdProvider, userThresholdsProvider, UserThresholds;
 
 class TankDetailsScreen extends ConsumerWidget {
   const TankDetailsScreen({super.key});
@@ -12,10 +12,12 @@ class TankDetailsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tankData = ref.watch(tankDataProvider);
     final waterQuality = ref.watch(waterQualityProvider);
+    final thresholds = ref.watch(userThresholdsProvider).valueOrNull
+        ?? const UserThresholds();
 
     // Firestore fallback when WebSocket hasn't delivered data yet
     final deviceId =
-        ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
+        ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
     final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final latest = latestAsync.valueOrNull;
 
@@ -26,7 +28,20 @@ class TankDetailsScreen extends ConsumerWidget {
     final capacity = tankData.capacity > 0 ? tankData.capacity : 500.0;
     final flowRate =
         wsHasTank ? tankData.flowRate : (latest?.flowRate ?? 0.0);
-    final status = wsHasTank ? tankData.status : (latest?.status ?? 'unknown');
+
+    // Compute level status dynamically from threshold settings
+    final String status;
+    if (level <= 0) {
+      status = 'unknown';
+    } else if (level <= thresholds.levelMin / 2) {
+      status = 'critical';
+    } else if (level <= thresholds.levelMin) {
+      status = 'warning';
+    } else if (level >= thresholds.levelHigh) {
+      status = 'high';
+    } else {
+      status = 'optimal';
+    }
 
     // Effective quality values: prefer WS if it has live data
     final wsHasQuality = waterQuality.turbidity.value > 0 ||
@@ -186,10 +201,13 @@ class TankDetailsScreen extends ConsumerWidget {
   Color _statusColor(String status) {
     switch (status) {
       case 'optimal':
+      case 'high':
         return AppColors.success;
+      case 'warning':
       case 'moderate':
-        return AppColors.warning;
       case 'low':
+        return AppColors.warning;
+      case 'critical':
         return AppColors.error;
       default:
         return AppColors.neutral4;

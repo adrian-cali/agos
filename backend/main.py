@@ -6,6 +6,7 @@ import asyncio
 import random
 import logging
 import os
+import time
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -74,7 +75,8 @@ state = {
     ],
     "settings": {
         "thresholds": {
-            "turbidity_max": 5.0,
+            "turbidity_min": 10.0,
+            "turbidity_max": 50.0,
             "ph_min": 6.5,
             "ph_max": 8.3,
             "tds_max": 500.0
@@ -269,30 +271,32 @@ async def handle_sensor_data(data: dict):
     ph = state["water_quality"]["ph"]["value"]
     tds = state["water_quality"]["tds"]["value"]
 
+    turb_min = thresholds.get("turbidity_min", 0.0)
     state["water_quality"]["turbidity"]["status"] = (
-        "optimal" if turb <= thresholds["turbidity_max"] else "critical"
+        "optimal" if turb_min <= turb <= thresholds["turbidity_max"] else "warning"
     )
     state["water_quality"]["ph"]["status"] = (
-        "optimal" if thresholds["ph_min"] <= ph <= thresholds["ph_max"] else "critical"
+        "optimal" if thresholds["ph_min"] <= ph <= thresholds["ph_max"] else "warning"
     )
     state["water_quality"]["tds"]["status"] = (
-        "optimal" if tds <= thresholds["tds_max"] else "critical"
+        "optimal" if tds <= thresholds["tds_max"] else "warning"
     )
 
     # Threshold alerts
     alert_messages = []
-    if turb > thresholds["turbidity_max"]:
-        alert_messages.append(f"Turbidity {turb:.1f} NTU exceeds threshold {thresholds['turbidity_max']} NTU")
+    turb_min = thresholds.get("turbidity_min", 0.0)
+    if not (turb_min <= turb <= thresholds["turbidity_max"]):
+        alert_messages.append(f"Turbidity {round(turb)} NTU out of range {round(turb_min)}–{round(thresholds['turbidity_max'])} NTU")
     if not (thresholds["ph_min"] <= ph <= thresholds["ph_max"]):
-        alert_messages.append(f"pH {ph:.1f} out of range {thresholds['ph_min']}–{thresholds['ph_max']}")
+        alert_messages.append(f"pH {ph:.1f} out of range {thresholds['ph_min']:.1f}–{thresholds['ph_max']:.1f}")
     if tds > thresholds["tds_max"]:
-        alert_messages.append(f"TDS {tds:.0f} ppm exceeds threshold {thresholds['tds_max']} ppm")
+        alert_messages.append(f"TDS {round(tds)} ppm exceeds threshold {round(thresholds['tds_max'])} ppm")
     if level < 20:
         alert_messages.append(f"Water level critically low: {level:.1f}%")
 
     for msg in alert_messages:
         alert = {
-            "id": str(len(state["alerts"]) + 1),
+            "id": f"thresh_{int(time.time()*1000)}_{len(state['alerts'])}",
             "type": "threshold_exceeded",
             "title": "Water Quality Alert",
             "description": msg,
@@ -362,7 +366,7 @@ async def handle_sensor_data(data: dict):
 
 async def handle_alert(data: dict):
     alert = {
-        "id": str(len(state["alerts"]) + 1),
+        "id": f"alert_{int(time.time()*1000)}_{len(state['alerts'])}",
         "type": data.get("alert_type", "unknown"),
         "title": data.get("title", "Alert"),
         "description": data.get("description", ""),
@@ -388,6 +392,27 @@ async def handle_delete_alert(data: dict):
         "timestamp": datetime.now().isoformat(),
         "alerts": state["alerts"]
     })
+
+
+async def handle_update_thresholds(data: dict):
+    """Update the in-memory thresholds used for alert generation."""
+    t = state["settings"]["thresholds"]
+    if "turbidity_min" in data:
+        t["turbidity_min"] = float(data["turbidity_min"])
+    if "turbidity_max" in data:
+        t["turbidity_max"] = float(data["turbidity_max"])
+    if "ph_min" in data:
+        t["ph_min"] = float(data["ph_min"])
+    if "ph_max" in data:
+        t["ph_max"] = float(data["ph_max"])
+    if "tds_max" in data:
+        t["tds_max"] = float(data["tds_max"])
+    # Update target strings so state_snapshot reflects user thresholds
+    turb_min = t.get("turbidity_min", 0.0)
+    state["water_quality"]["turbidity"]["target"] = f"{turb_min:.0f}–{t['turbidity_max']:.0f} NTU"
+    state["water_quality"]["ph"]["target"] = f"{t['ph_min']:.1f}–{t['ph_max']:.1f}"
+    state["water_quality"]["tds"]["target"] = f"<{t['tds_max']:.0f} ppm"
+    logger.info(f"Thresholds updated: {t}")
 
 
 async def handle_get_history(data: dict, websocket: WebSocket):
@@ -668,6 +693,8 @@ async def websocket_app(websocket: WebSocket):
 
             if msg_type == "delete_alert":
                 await handle_delete_alert(data)
+            elif msg_type == "update_thresholds":
+                await handle_update_thresholds(data)
             elif msg_type == "get_state":
                 await websocket.send_json({
                     "type": "state_snapshot",

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:wifi_scan/wifi_scan.dart';
 import '../../../core/constants/connection_method_design.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../data/services/ble_provisioning_service.dart';
 
 class WifiSetupScreen extends StatefulWidget {
   const WifiSetupScreen({super.key});
@@ -17,14 +19,18 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   bool _showPassword = false;
   bool _isPasswordStep = false; // false => show available networks; true => show password entry
   bool _isConnecting = false;
+  bool _isScanning = false;
+  String? _scanError;
 
-  final List<Map<String, dynamic>> _networks = [
-    {'name': 'Home_WiFi_5G', 'signal': 4, 'secured': true},
-    {'name': 'AGOS_Network', 'signal': 3, 'secured': true},
-    {'name': 'Office_WiFi', 'signal': 3, 'secured': true},
-    {'name': 'Guest_Network', 'signal': 2, 'secured': false},
-    {'name': 'IoT_Network', 'signal': 2, 'secured': true},
-  ];
+  List<Map<String, dynamic>> _networks = [];
+
+  final _ble = BleProvisioningService();
+
+  @override
+  void initState() {
+    super.initState();
+    _scanWifi();
+  }
 
   @override
   void dispose() {
@@ -33,21 +39,123 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     super.dispose();
   }
 
-  void _connect() async {
+  Future<void> _scanWifi() async {
+    setState(() {
+      _isScanning = true;
+      _scanError = null;
+    });
+
+    // ── Simulation Mode ──────────────────────────────────────────────────────
+    if (_ble.simulationMode) {
+      await Future.delayed(const Duration(seconds: 1));
+      setState(() {
+        _networks = [
+          {'name': 'HomeNetwork_5G',   'signal': 4, 'secured': true,  'level': -45},
+          {'name': 'AGOS_Lab_WiFi',    'signal': 4, 'secured': false, 'level': -50},
+          {'name': 'NeighbourWifi',    'signal': 3, 'secured': true,  'level': -65},
+          {'name': 'CoffeeShop_Guest', 'signal': 2, 'secured': false, 'level': -75},
+          {'name': 'AndroidAP',        'signal': 1, 'secured': true,  'level': -82},
+        ];
+        _isScanning = false;
+      });
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    try {
+      // Check if we can scan
+      final canScan = await WiFiScan.instance.canStartScan(askPermissions: true);
+      if (canScan != CanStartScan.yes) {
+        setState(() {
+          _scanError = 'Cannot scan WiFi: ${canScan.name}. Check location permissions.';
+          _isScanning = false;
+        });
+        return;
+      }
+
+      await WiFiScan.instance.startScan();
+
+      final can = await WiFiScan.instance.canGetScannedResults(askPermissions: true);
+      if (can != CanGetScannedResults.yes) {
+        setState(() {
+          _scanError = 'Cannot read WiFi results: ${can.name}.';
+          _isScanning = false;
+        });
+        return;
+      }
+
+      final results = await WiFiScan.instance.getScannedResults();
+      // Deduplicate by SSID, remove hidden/empty SSIDs, sort by signal
+      final seen = <String>{};
+      final networks = <Map<String, dynamic>>[];
+      for (final ap in results) {
+        final ssid = ap.ssid.trim();
+        if (ssid.isEmpty) continue;
+        if (seen.contains(ssid)) continue;
+        seen.add(ssid);
+        // capabilities string e.g. "[WPA2-PSK-CCMP][WPS][ESS]"
+        // A network is secured if it has WPA, WPA2, WPA3, or WEP in capabilities.
+        final secured = ap.capabilities.contains('WPA') ||
+            ap.capabilities.contains('WEP');
+        // level is in dBm; convert to 0-4 bar signal
+        final level = ap.level; // dBm, typically -30 to -90
+        final bars = level >= -55
+            ? 4
+            : level >= -65
+                ? 3
+                : level >= -75
+                    ? 2
+                    : 1;
+        networks.add({
+          'name': ssid,
+          'signal': bars,
+          'secured': secured,
+          'level': level,
+        });
+      }
+      // Sort strongest first
+      networks.sort((a, b) => (b['level'] as int).compareTo(a['level'] as int));
+      setState(() {
+        _networks = networks;
+        _isScanning = false;
+        if (networks.isEmpty) {
+          _scanError = 'No WiFi networks found. Make sure WiFi is enabled.';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _scanError = 'WiFi scan failed: $e';
+        _isScanning = false;
+      });
+    }
+  }
+
+  Future<void> _connect() async {
     final ssid = _ssidController.text.trim();
-    // Password will be used for actual WiFi connection implementation
+    final password = _passwordController.text;
 
     if (ssid.isEmpty) return;
 
     setState(() => _isConnecting = true);
 
-    // simulate connect attempt
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      await _ble.sendWifiCredentials(ssid: ssid, password: password);
+      setState(() => _isConnecting = false);
+      if (mounted) Navigator.pushReplacementNamed(context, '/pairing-device');
+    } catch (e) {
+      setState(() => _isConnecting = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send credentials: $e')),
+        );
+      }
+    }
+  }
 
-    setState(() => _isConnecting = false);
-
-    // on success navigate to Pairing Device
-    if (mounted) Navigator.pushReplacementNamed(context, '/pairing-device');
+  bool _isNetworkSecured(String? name) {
+    if (name == null) return true;
+    final entry = _networks.firstWhere((n) => n['name'] == name, orElse: () => {'secured': true});
+    return entry['secured'] as bool;
   }
 
   @override
@@ -302,18 +410,44 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Available networks',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF0B3A57),
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Available networks',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0B3A57),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: _isScanning
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 20),
+                tooltip: 'Refresh',
+                onPressed: _isScanning ? null : _scanWifi,
+              ),
+            ],
           ),
+          if (_scanError != null) ...[
+            const SizedBox(height: 8),
+            Text(_scanError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ],
           const SizedBox(height: 12),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 260),
-            child: ListView.separated(
+            child: _isScanning && _networks.isEmpty
+                ? const Center(child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: CircularProgressIndicator(),
+                  ))
+                : ListView.separated(
               shrinkWrap: true,
               itemCount: _networks.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -411,7 +545,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
                 );
               },
             ),
-          ),
+          ),   // ConstrainedBox
         ],
       ),
     );
@@ -515,11 +649,5 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
         ],
       ),
     );
-  }
-
-  bool _isNetworkSecured(String? name) {
-    if (name == null) return true;
-    final entry = _networks.firstWhere((n) => n['name'] == name, orElse: () => {'secured': true});
-    return entry['secured'] as bool;
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/firestore_service.dart';
+import '../../../data/services/websocket_service.dart' show webSocketServiceProvider;
 import '../../widgets/fade_slide_in.dart';
 
 class AlertSettingsScreen extends ConsumerStatefulWidget {
@@ -37,17 +38,19 @@ class _AlertSettingsScreenState extends ConsumerState<AlertSettingsScreen> {
     if (user == null) return;
     setState(() => _saving = true);
     try {
-      await ref.read(firestoreServiceProvider).saveThresholds(
-            user.uid,
-            UserThresholds(
+      final thresholds = UserThresholds(
               turbidityMax: _turbidityMax,
               phMin: _phRange.start,
               phMax: _phRange.end,
               tdsMax: _tdsMax,
               levelMin: _waterLevelLow,
               levelHigh: _waterLevelHigh,
-            ),
+            );
+      await ref.read(firestoreServiceProvider).saveThresholds(
+            user.uid,
+            thresholds,
           );
+      ref.read(webSocketServiceProvider).sendThresholds(thresholds);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

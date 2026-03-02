@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'websocket_service.dart'
-    show AlertItem; // AlertItem defined there; reuse the model
+    show AlertItem, alertsProvider, dismissedAlertsProvider; // AlertItem defined there; reuse the model
 
 // ============= Models =============
 
@@ -82,7 +83,10 @@ class UserProfile {
 // ─── User Thresholds ──────────────────────────────────────────────────────
 
 class UserThresholds {
-  final double turbidityMax;  // NTU — above this is warning/critical
+  final double turbidityMin;       // NTU — optimal lower bound
+  final double turbidityMax;       // NTU — optimal upper bound
+  final double turbidityCriticalMin; // NTU — critical lower bound (too clear)
+  final double turbidityCriticalMax; // NTU — critical upper bound (very cloudy)
   final double phMin;         // pH below this is warning
   final double phMax;         // pH above this is warning
   final double tdsMax;        // ppm — above this is warning/critical
@@ -90,16 +94,22 @@ class UserThresholds {
   final double levelHigh;     // % — above this triggers full-tank alert
 
   const UserThresholds({
-    this.turbidityMax = 10.0,
-    this.phMin = 6.5,
-    this.phMax = 8.5,
-    this.tdsMax = 400.0,
+    this.turbidityMin = 10.0,
+    this.turbidityMax = 50.0,
+    this.turbidityCriticalMin = 5.0,
+    this.turbidityCriticalMax = 100.0,
+    this.phMin = 6.0,
+    this.phMax = 9.5,
+    this.tdsMax = 1000.0,
     this.levelMin = 20.0,
     this.levelHigh = 90.0,
   });
 
   UserThresholds copyWith({
+    double? turbidityMin,
     double? turbidityMax,
+    double? turbidityCriticalMin,
+    double? turbidityCriticalMax,
     double? phMin,
     double? phMax,
     double? tdsMax,
@@ -107,7 +117,10 @@ class UserThresholds {
     double? levelHigh,
   }) =>
       UserThresholds(
+        turbidityMin: turbidityMin ?? this.turbidityMin,
         turbidityMax: turbidityMax ?? this.turbidityMax,
+        turbidityCriticalMin: turbidityCriticalMin ?? this.turbidityCriticalMin,
+        turbidityCriticalMax: turbidityCriticalMax ?? this.turbidityCriticalMax,
         phMin: phMin ?? this.phMin,
         phMax: phMax ?? this.phMax,
         tdsMax: tdsMax ?? this.tdsMax,
@@ -116,7 +129,10 @@ class UserThresholds {
       );
 
   Map<String, dynamic> toMap() => {
+        'turbidity_min': turbidityMin,
         'turbidity_max': turbidityMax,
+        'turbidity_critical_min': turbidityCriticalMin,
+        'turbidity_critical_max': turbidityCriticalMax,
         'ph_min': phMin,
         'ph_max': phMax,
         'tds_max': tdsMax,
@@ -125,10 +141,13 @@ class UserThresholds {
       };
 
   factory UserThresholds.fromMap(Map<String, dynamic> m) => UserThresholds(
-        turbidityMax: (m['turbidity_max'] ?? 10.0).toDouble(),
-        phMin: (m['ph_min'] ?? 6.5).toDouble(),
-        phMax: (m['ph_max'] ?? 8.5).toDouble(),
-        tdsMax: (m['tds_max'] ?? 400.0).toDouble(),
+        turbidityMin: (m['turbidity_min'] ?? 10.0).toDouble(),
+        turbidityMax: (m['turbidity_max'] ?? 50.0).toDouble(),
+        turbidityCriticalMin: (m['turbidity_critical_min'] ?? 5.0).toDouble(),
+        turbidityCriticalMax: (m['turbidity_critical_max'] ?? 100.0).toDouble(),
+        phMin: (m['ph_min'] ?? 6.0).toDouble(),
+        phMax: (m['ph_max'] ?? 9.5).toDouble(),
+        tdsMax: (m['tds_max'] ?? 1000.0).toDouble(),
         levelMin: (m['level_min'] ?? 20.0).toDouble(),
         levelHigh: (m['level_high'] ?? 90.0).toDouble(),
       );
@@ -141,6 +160,7 @@ class FirestoreService {
 
   /// Stream of the latest [limit] sensor readings for a device,
   /// ordered by timestamp descending.
+  /// Uses composite index: device_id ASC + timestamp DESC.
   Stream<List<SensorReading>> latestReadingsStream(
     String deviceId, {
     int limit = 50,
@@ -151,12 +171,11 @@ class FirestoreService {
         .orderBy('timestamp', descending: true)
         .limit(limit)
         .snapshots()
-        .map(
-          (snap) => snap.docs.map(SensorReading.fromFirestore).toList(),
-        );
+        .map((snap) => snap.docs.map(SensorReading.fromFirestore).toList());
   }
 
   /// Stream of the most-recent single sensor reading for a device.
+  /// Uses composite index: device_id ASC + timestamp DESC.
   Stream<SensorReading?> latestReadingStream(String deviceId) {
     return _db
         .collection('sensor_readings')
@@ -164,25 +183,50 @@ class FirestoreService {
         .orderBy('timestamp', descending: true)
         .limit(1)
         .snapshots()
-        .map(
-          (snap) =>
-              snap.docs.isEmpty ? null : SensorReading.fromFirestore(snap.docs.first),
-        );
+        .map((snap) {
+          if (snap.docs.isEmpty) return null;
+          return SensorReading.fromFirestore(snap.docs.first);
+        });
   }
 
-  /// One-shot fetch of sensor readings for a device.
+  /// One-shot fetch of sensor readings for a device within a time window.
   /// [days] and [hours] are added together to form the lookback window.
-  /// For a 1-hour seed, pass days: 0, hours: 1.
+  /// Uses composite index: device_id ASC + timestamp ASC.
   Future<List<SensorReading>> fetchReadings(String deviceId,
       {int days = 30, int hours = 0}) async {
     final cutoff = DateTime.now().subtract(Duration(days: days, hours: hours));
-    final snap = await _db
-        .collection('sensor_readings')
-        .where('device_id', isEqualTo: deviceId)
-        .where('timestamp', isGreaterThan: Timestamp.fromDate(cutoff))
-        .orderBy('timestamp', descending: false)
-        .get();
-    return snap.docs.map(SensorReading.fromFirestore).toList();
+    try {
+      final snap = await _db
+          .collection('sensor_readings')
+          .where('device_id', isEqualTo: deviceId)
+          .where('timestamp',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+          .orderBy('timestamp')
+          .get();
+      return snap.docs.map(SensorReading.fromFirestore).toList();
+    } catch (e, st) {
+      debugPrint('[fetchReadings] ERROR: $e\n$st');
+      rethrow;
+    }
+  }
+
+  /// Delete ALL sensor_readings documents for [deviceId].
+  /// Only deletes from the sensor_readings collection — no other data is touched.
+  Future<void> deleteAllReadings(String deviceId) async {
+    const int batchSize = 400; // Firestore batch write limit is 500
+    while (true) {
+      final snap = await _db
+          .collection('sensor_readings')
+          .where('device_id', isEqualTo: deviceId)
+          .limit(batchSize)
+          .get();
+      if (snap.docs.isEmpty) break;
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
   }
 
   /// Save data-logging preferences for a user.
@@ -212,32 +256,30 @@ class FirestoreService {
 
 
   /// Sensor readings for the last [hours] hours, suitable for charts.
-  /// Capped at [maxPoints] most-recent documents to stay within Firestore free-tier quota.
+  /// Reads only the [maxPoints] most-recent documents within the window.
+  /// Uses composite index: device_id ASC + timestamp DESC.
   Stream<List<SensorReading>> historyStream(
     String deviceId, {
     int hours = 24,
     int maxPoints = 200,
   }) {
     final cutoff = DateTime.now().subtract(Duration(hours: hours));
-    // Query ascending by timestamp; Firestore will auto-create this index.
-    // We take the last [maxPoints] results by reading all matching docs
-    // (bounded by the time window) and returning them sorted oldest→newest.
     return _db
         .collection('sensor_readings')
         .where('device_id', isEqualTo: deviceId)
-        .where('timestamp', isGreaterThan: Timestamp.fromDate(cutoff))
-        .orderBy('timestamp', descending: false)
+        .where('timestamp',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+        .orderBy('timestamp', descending: true)
+        .limit(maxPoints)
         .snapshots()
-        .map(
-          (snap) {
-            final docs = snap.docs.map(SensorReading.fromFirestore).toList();
-            // Keep only the most recent maxPoints to limit per-open read cost
-            if (docs.length > maxPoints) {
-              return docs.sublist(docs.length - maxPoints);
-            }
-            return docs;
-          },
-        );
+        .map((snap) {
+          // Reverse to get ascending order (oldest first) for chart rendering
+          return snap.docs
+              .map(SensorReading.fromFirestore)
+              .toList()
+              .reversed
+              .toList();
+        });
   }
 
   /// Fetch user profile from Firestore.
@@ -606,4 +648,22 @@ final firestoreAlertsProvider =
   return service
       .latestReadingsStream(deviceId, limit: 50)
       .map((readings) => _alertsFromReadings(readings, thresholds));
+});
+
+/// True when there is at least one alert (Firestore-derived or WebSocket)
+/// that has not been dismissed by the user.
+/// Returns false (no dot) until the dismissed-IDs set has loaded from prefs.
+final hasUnreadAlertsProvider = Provider<bool>((ref) {
+  final deviceId =
+      ref.watch(linkedDeviceIdProvider).valueOrNull ?? '';
+  if (deviceId.isEmpty) return false;
+  final dismissedState = ref.watch(dismissedAlertsProvider);
+  // Don't show dot until we know which IDs are already dismissed
+  if (!dismissedState.loaded) return false;
+  final dismissed = dismissedState.ids;
+  final fsAlerts =
+      ref.watch(firestoreAlertsProvider(deviceId)).valueOrNull ?? [];
+  final wsAlerts = ref.watch(alertsProvider);
+  final allIds = {...fsAlerts.map((a) => a.id), ...wsAlerts.map((a) => a.id)};
+  return allIds.any((id) => !dismissed.contains(id));
 });

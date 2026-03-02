@@ -187,7 +187,7 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
       }
 
       final deviceId =
-          ref.read(linkedDeviceIdProvider).valueOrNull ?? 'esp32-sim-001';
+          ref.read(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
 
       final service = ref.read(firestoreServiceProvider);
       final readings = await service.fetchReadings(deviceId, days: 90);

@@ -27,6 +27,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   bool _pumpManualOn = false;
   int _selectedPumpDuration = 10; // default 10 minutes
 
+  // Live/Idle clock — ticks every second to keep "Updated X ago" fresh
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +43,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       duration: const Duration(milliseconds: 600),
       vsync: this,
     )..forward();
+
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
 
     // Connect WebSocket so tankDataProvider and waterQualityProvider get live data.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -53,6 +61,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     _waveController.dispose();
     _pageController.dispose();
     _pumpCountdownTimer?.cancel();
+    _clockTimer?.cancel();
     super.dispose();
   }
 
@@ -61,6 +70,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     if (hour < 12) return 'Good Morning,';
     if (hour < 17) return 'Good Afternoon,';
     return 'Good Evening,';
+  }
+
+  String _formatAgo(DateTime last) {
+    final diff = _now.difference(last);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
   }
 
   /// Wraps [child] with a staggered slide-up + fade-in animation.
@@ -88,9 +104,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final tankData = ref.watch(tankDataProvider);
     // Use the real device ID from Firestore; fall back to simulator ID during dev
     final deviceIdAsync = ref.watch(linkedDeviceIdProvider);
-    final deviceId = deviceIdAsync.valueOrNull ?? 'esp32-sim-001';
+    final deviceId = deviceIdAsync.valueOrNull ?? 'agos-zksl9QK3';
     final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final latest = latestAsync.valueOrNull;
+    // User threshold settings for dynamic status
+    final thresholds = ref.watch(userThresholdsProvider).valueOrNull
+        ?? const UserThresholds();
+    // Connection state
+    final isLive = ref.watch(wsConnectedProvider);
+    final lastData = ref.watch(wsLastDataProvider);
 
     // Merge: prefer WebSocket live data, fall back to Firestore
     final effectiveTank = (tankData.level > 0 || latest == null)
@@ -122,7 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     _buildAnimated(0, _buildSavingsCard()),
                     const SizedBox(height: 25),
                     // Main Water Tank card
-                    _buildAnimated(1, _buildWaterTankCard(effectiveTank)),
+                    _buildAnimated(1, _buildWaterTankCard(effectiveTank, thresholds, isLive: isLive, lastData: lastData)),
                     const SizedBox(height: 25),
                     // Pump Control card
                     _buildAnimated(2, _buildPumpCard()),
@@ -213,6 +235,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   size: 20,
                 ),
               ),
+              if (ref.watch(hasUnreadAlertsProvider))
               Positioned(
                 top: 0,
                 right: 0,
@@ -359,7 +382,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildWaterTankCard(TankData tankData) {
+  Widget _buildWaterTankCard(TankData tankData, UserThresholds thresholds,
+      {bool isLive = false, DateTime? lastData}) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -432,13 +456,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
-                    color: const Color(0xFF009966),
+                    color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                     width: 0.8,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF009966).withValues(alpha: 0.32),
+                      color: (isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E))
+                          .withValues(alpha: 0.32),
                       blurRadius: 11,
                       offset: const Offset(0, 0),
                     ),
@@ -451,20 +476,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       width: 12,	
                       height: 12,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF009966),
+                        color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFF009966),
+                          color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                           width: 1.5,
                         ),
                         boxShadow: [
-                          // Outer green glow
                           BoxShadow(
-                            color: const Color(0xFF009966).withValues(alpha: 0.4),
+                            color: (isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E))
+                                .withValues(alpha: 0.4),
                             blurRadius: 6,
                             offset: const Offset(0, 0),
                           ),
-                          // Subtle shadow for depth
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 2,
@@ -475,9 +499,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Live',
+                      isLive ? 'Live' : 'Idle',
                       style: TextStyle(
-                        color: const Color(0xFF009966),
+                        color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                         fontSize: 12,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Inter',
@@ -498,7 +522,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               const SizedBox(width: 25),
               // Tank data
               Expanded(
-                child: _buildTankData(tankData),
+                child: _buildTankData(tankData, thresholds),
               ),
             ],
           ),
@@ -719,7 +743,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildTankData(TankData tankData) {
+  Widget _buildTankData(TankData tankData, UserThresholds thresholds) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -786,11 +810,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           final Color statusColor;
           final Color dotColor;
           final String statusLabel;
-          if (tankData.level >= 70) {
+          if (tankData.level >= thresholds.levelHigh) {
             statusColor = const Color(0xFF00C851);
             dotColor = const Color(0xFF00C851);
             statusLabel = 'Optimal Level';
-          } else if (tankData.level >= 40) {
+          } else if (tankData.level > thresholds.levelMin) {
             statusColor = const Color(0xFFFDC700);
             dotColor = const Color(0xFFFDC700);
             statusLabel = 'Moderate Level';

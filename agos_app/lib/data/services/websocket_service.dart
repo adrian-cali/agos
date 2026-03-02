@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/constants/api_config.dart';
+import '../../core/services/local_notification_service.dart';
 import 'firestore_service.dart';
 
 // ============= Models =============
@@ -115,6 +118,16 @@ class AlertItem {
       severity: json['severity'] ?? 'info',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type,
+    'title': title,
+    'description': description,
+    'timestamp': timestamp,
+    'is_read': isRead,
+    'severity': severity,
+  };
 }
 
 class DeviceInfo {
@@ -163,6 +176,14 @@ class WebSocketService {
   bool _isConnected = false;
   final List<Function(Map<String, dynamic>)> _listeners = [];
 
+  /// Called whenever the connection state changes. True = connected, false = disconnected.
+  Function(bool)? onConnectionChanged;
+
+  /// Called with the message type each time any WS message is received.
+  /// Only sensor-data messages (not heartbeat_ack, pump_update, etc.) should
+  /// be used to mark the connection as "Live".
+  Function(String type)? onMessageReceived;
+
   bool get isConnected => _isConnected;
 
   void connect() async {
@@ -183,12 +204,15 @@ class WebSocketService {
       await Future.delayed(const Duration(milliseconds: 500));
       
       _isConnected = true;
+      onConnectionChanged?.call(true);
       _reconnectDelay = 3; // reset backoff on successful connect
 
       _channel!.stream.listen(
         (message) {
           try {
             final data = jsonDecode(message as String) as Map<String, dynamic>;
+            final type = data['type'] as String? ?? '';
+            onMessageReceived?.call(type);
             for (final listener in _listeners) {
               listener(data);
             }
@@ -199,11 +223,13 @@ class WebSocketService {
         onError: (error) {
           print('WebSocket error: $error');
           _isConnected = false;
+          onConnectionChanged?.call(false);
           _scheduleReconnect();
         },
         onDone: () {
           print('WebSocket connection closed');
           _isConnected = false;
+          onConnectionChanged?.call(false);
           _scheduleReconnect();
         },
       );
@@ -213,6 +239,7 @@ class WebSocketService {
     } catch (e) {
       print('Failed to connect to WebSocket: $e');
       _isConnected = false;
+      onConnectionChanged?.call(false);
       _scheduleReconnect();
     }
   }
@@ -264,6 +291,18 @@ class WebSocketService {
     });
   }
 
+  /// Push user thresholds to the backend so alert generation uses saved values.
+  void sendThresholds(UserThresholds t) {
+    send({
+      'type': 'update_thresholds',
+      'turbidity_min': t.turbidityMin,
+      'turbidity_max': t.turbidityMax,
+      'ph_min': t.phMin,
+      'ph_max': t.phMax,
+      'tds_max': t.tdsMax,
+    });
+  }
+
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -294,19 +333,303 @@ class WebSocketService {
     _heartbeatTimer?.cancel();
     _reconnectTimer?.cancel();
     _isConnected = false;
+    onConnectionChanged?.call(false);
     _channel?.sink.close();
   }
 }
 
 // ============= Providers =============
 
+/// Whether the ESP32/simulator is actively sending data (received within last 15s).
+/// This is "Live" in the UI — true only when fresh sensor data is arriving.
+final wsConnectedProvider = StateProvider<bool>((ref) => false);
+
+/// Timestamp of the last sensor data message received from the ESP32 via WebSocket.
+/// Persisted to SharedPreferences so it survives hot restarts.
+final wsLastDataProvider =
+    StateNotifierProvider<_WsLastDataNotifier, DateTime?>((ref) {
+  return _WsLastDataNotifier();
+});
+
+class _WsLastDataNotifier extends StateNotifier<DateTime?> {
+  static const _key = 'ws_last_data_ts';
+
+  _WsLastDataNotifier() : super(null) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ms = prefs.getInt(_key);
+      if (ms != null && mounted) {
+        state = DateTime.fromMillisecondsSinceEpoch(ms);
+      }
+    } catch (_) {}
+  }
+
+  void update(DateTime dt) {
+    state = dt;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt(_key, dt.millisecondsSinceEpoch);
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dismissed alerts — persisted across sessions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Holds the set of dismissed alert IDs plus a flag indicating whether the
+/// persisted data has been loaded from SharedPreferences.
+class DismissedAlertsState {
+  final Set<String> ids;
+  final bool loaded;
+  const DismissedAlertsState({required this.ids, required this.loaded});
+}
+
+/// Set of alert IDs the user has dismissed in the notification modal.
+/// Persisted to SharedPreferences so dismissals survive restarts.
+final dismissedAlertsProvider =
+    StateNotifierProvider<DismissedAlertsNotifier, DismissedAlertsState>(
+        (ref) => DismissedAlertsNotifier());
+
+// ── Completed alerts (persisted across sessions) ─────────────────────────────
+
+final completedAlertsProvider =
+    StateNotifierProvider<CompletedAlertsNotifier, Set<String>>(
+        (ref) => CompletedAlertsNotifier());
+
+class CompletedAlertsNotifier extends StateNotifier<Set<String>> {
+  static const _key = 'completed_alert_ids';
+
+  CompletedAlertsNotifier() : super(const {}) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_key) ?? [];
+      if (mounted) state = Set<String>.from(list);
+    } catch (_) {}
+  }
+
+  void markCompleted(String id) {
+    if (state.contains(id)) return;
+    state = {...state, id};
+    _save();
+  }
+
+  void _save() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setStringList(_key, state.toList());
+    });
+  }
+}
+
+class DismissedAlertsNotifier
+    extends StateNotifier<DismissedAlertsState> {
+  static const _key = 'dismissed_alert_ids';
+
+  DismissedAlertsNotifier()
+      : super(const DismissedAlertsState(ids: {}, loaded: false)) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_key) ?? [];
+      if (mounted) {
+        state = DismissedAlertsState(
+            ids: Set<String>.from(list), loaded: true);
+      }
+    } catch (_) {
+      if (mounted) {
+        state = DismissedAlertsState(ids: state.ids, loaded: true);
+      }
+    }
+  }
+
+  void dismiss(String id) {
+    if (state.ids.contains(id)) return;
+    state = DismissedAlertsState(ids: {...state.ids, id}, loaded: state.loaded);
+    _save();
+  }
+
+  void dismissAll(Iterable<String> ids) {
+    state = DismissedAlertsState(
+        ids: {...state.ids, ...ids}, loaded: state.loaded);
+    _save();
+  }
+
+  void _save() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setStringList(_key, state.ids.toList());
+    });
+  }
+}
+
+// ── Push notifications enabled toggle (persisted) ────────────────────────────
+
+final pushNotificationsEnabledProvider =
+    StateNotifierProvider<PushNotificationsEnabledNotifier, bool>(
+        (ref) => PushNotificationsEnabledNotifier());
+
+class PushNotificationsEnabledNotifier extends StateNotifier<bool> {
+  static const _key = 'push_notifications_enabled';
+
+  PushNotificationsEnabledNotifier() : super(true) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) state = prefs.getBool(_key) ?? true;
+    } catch (_) {}
+  }
+
+  void setEnabled(bool value) {
+    state = value;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool(_key, value);
+    });
+  }
+}
+
+// ── Cached alerts (persisted, survives hot restart) ───────────────────────────
+
+final cachedAlertsProvider =
+    StateNotifierProvider<CachedAlertsNotifier, List<AlertItem>>(
+        (ref) => CachedAlertsNotifier());
+
+class CachedAlertsNotifier extends StateNotifier<List<AlertItem>> {
+  static const _key = 'cached_alert_items';
+  static const _maxCached = 50; // keep at most 50 alerts
+
+  CachedAlertsNotifier() : super([]) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_key) ?? [];
+      if (mounted) {
+        state = raw
+            .map((s) {
+              try {
+                return AlertItem.fromJson(
+                    Map<String, dynamic>.from(jsonDecode(s) as Map));
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<AlertItem>()
+            .toList();
+      }
+    } catch (_) {}
+  }
+
+  void addOrUpdate(AlertItem alert) {
+    final existing = state.indexWhere((a) => a.id == alert.id);
+    List<AlertItem> updated;
+    if (existing >= 0) {
+      updated = [...state];
+      updated[existing] = alert;
+    } else {
+      updated = [alert, ...state];
+      if (updated.length > _maxCached) {
+        updated = updated.sublist(0, _maxCached);
+      }
+    }
+    state = updated;
+    _save();
+  }
+
+  void addOrUpdateAll(List<AlertItem> alerts) {
+    final map = {for (final a in state) a.id: a};
+    for (final a in alerts) {
+      map[a.id] = a;
+    }
+    var updated = map.values.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    if (updated.length > _maxCached) updated = updated.sublist(0, _maxCached);
+    state = updated;
+    _save();
+  }
+
+  void _save() {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setStringList(
+          _key, state.map((a) => jsonEncode(a.toJson())).toList());
+    });
+  }
+}
+
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
+
+  // Only messages that come directly from the ESP32 sensor (relayed in real-time
+  // by the backend) count as "Live". The initial state_snapshot on connect is
+  // excluded because it contains cached/stale data from the backend's memory.
+  const Set<String> _sensorMessageTypes = {
+    'tank_update',       // emitted by backend's handle_sensor_data() — real-time ESP32 data
+    'quality_update',    // emitted by backend's handle_sensor_data() — real-time ESP32 data
+    'sensor_update',     // alternative sensor data message type
+    'water_quality_update',
+  };
+  Timer? _staleTimer;
+
+  void _markOffline(Ref ref) {
+    // Only fire the alert if we were previously live
+    if (!ref.read(wsConnectedProvider)) return;
+    ref.read(wsConnectedProvider.notifier).state = false;
+    // The offline alert is injected by alertsProvider via a ref.listen
+    // on wsConnectedProvider — no direct dependency needed here.
+  }
+
   final service = WebSocketService();
+
+  service.onMessageReceived = (type) {
+    if (!_sensorMessageTypes.contains(type)) return;
+    final now = DateTime.now();
+    ref.read(wsLastDataProvider.notifier).update(now);
+    ref.read(wsConnectedProvider.notifier).state = true;
+
+    // Auto-set Live = false if no sensor data arrives within 15 seconds.
+    _staleTimer?.cancel();
+    _staleTimer = Timer(const Duration(seconds: 15), () {
+      _markOffline(ref);
+    });
+  };
+
+  // When the WS itself disconnects, immediately mark as not live.
+  service.onConnectionChanged = (connected) {
+    if (!connected) {
+      _staleTimer?.cancel();
+      _markOffline(ref);
+    } else {
+      // Push saved thresholds immediately on each reconnect.
+      final thresholds = ref.read(userThresholdsProvider).valueOrNull;
+      if (thresholds != null) service.sendThresholds(thresholds);
+    }
+  };
   
+  // Auto-push user thresholds to backend whenever they change
+  // (covers initial load after login and any saves from settings).
+  ref.listen<AsyncValue<UserThresholds>>(userThresholdsProvider, (_, next) {
+    next.whenData((t) => service.sendThresholds(t));
+  });
+
   // Don't auto-connect immediately - let the app start without WebSocket issues
   // Connect can be called manually when needed
   
-  ref.onDispose(() => service.disconnect());
+  ref.onDispose(() {
+    _staleTimer?.cancel();
+    service.disconnect();
+  });
   return service;
 });
 
@@ -360,33 +683,141 @@ final alertsProvider =
     StateNotifierProvider<AlertsNotifier, List<AlertItem>>((ref) {
   final notifier = AlertsNotifier();
   final ws = ref.watch(webSocketServiceProvider);
+
+  // Seed from cache so alerts survive hot restarts
+  final cached = ref.read(cachedAlertsProvider);
+  if (cached.isNotEmpty) notifier.setAlerts(cached);
+
+  /// Fire an OS notification for an alert if not yet shown.
+  void _maybeNotify(AlertItem alert) {
+    if (notifier.wasNotified(alert.id)) return;
+    notifier.markNotified(alert.id);
+
+    // Check if push notifications are enabled
+    if (!ref.read(pushNotificationsEnabledProvider)) return;
+
+    // Pick icon accent color matching the dashboard parameter icon gradient
+    Color notifColor;
+    final desc = alert.description.toLowerCase();
+    if (desc.contains('turbidity')) {
+      notifColor = const Color(0xFF00D3F2); // cyan — turbidity
+    } else if (desc.contains('ph') || desc.contains('ph ')) {
+      notifColor = const Color(0xFFC27AFF); // purple — pH
+    } else if (desc.contains('tds')) {
+      notifColor = const Color(0xFF7C86FF); // blue-violet — TDS
+    } else {
+      notifColor = const Color(0xFF00D3F2); // fallback cyan
+    }
+
+    LocalNotificationService().showThresholdAlert(
+      alertId: alert.id,
+      title: alert.title,
+      body: alert.description,
+      color: notifColor,
+    );
+  }
+
   ws.addListener((data) {
     final type = data['type'];
     if (type == 'state_snapshot') {
-      final alerts = (data['alerts'] as List?)
+      final serverAlerts = (data['alerts'] as List?)
               ?.map((a) => AlertItem.fromJson(a))
               .toList() ??
           [];
-      notifier.setAlerts(alerts);
+      // Preserve locally-injected system alerts (e.g. offline alert) not on server
+      final localSystem = notifier.state
+          .where((a) => a.type == 'system')
+          .toList();
+      final serverIds = serverAlerts.map((a) => a.id).toSet();
+      final merged = [
+        ...serverAlerts,
+        ...localSystem.where((a) => !serverIds.contains(a.id)),
+      ];
+      notifier.setAlerts(merged);
+      // Cache server alerts so they survive hot restarts
+      ref.read(cachedAlertsProvider.notifier).addOrUpdateAll(serverAlerts);
+      // Notify for warning/critical threshold alerts
+      for (final a in serverAlerts) {
+        if (a.type == 'water_quality' || a.severity == 'critical' || a.severity == 'warning') {
+          _maybeNotify(a);
+        }
+      }
     } else if (type == 'system_alert') {
-      notifier.addAlert(AlertItem.fromJson(data['alert'] ?? {}));
+      final alert = AlertItem.fromJson(data['alert'] ?? {});
+      notifier.addAlert(alert);
+      // Cache this alert
+      ref.read(cachedAlertsProvider.notifier).addOrUpdate(alert);
+      _maybeNotify(alert);
     } else if (type == 'alerts_updated') {
-      final alerts = (data['alerts'] as List?)
+      final serverAlerts = (data['alerts'] as List?)
               ?.map((a) => AlertItem.fromJson(a))
               .toList() ??
           [];
-      notifier.setAlerts(alerts);
+      // Same merge: keep local system alerts
+      final localSystem = notifier.state
+          .where((a) => a.type == 'system')
+          .toList();
+      final serverIds = serverAlerts.map((a) => a.id).toSet();
+      final merged = [
+        ...serverAlerts,
+        ...localSystem.where((a) => !serverIds.contains(a.id)),
+      ];
+      notifier.setAlerts(merged);
+      // Cache
+      ref.read(cachedAlertsProvider.notifier).addOrUpdateAll(serverAlerts);
+      for (final a in serverAlerts) {
+        if (a.type == 'water_quality' || a.severity == 'critical' || a.severity == 'warning') {
+          _maybeNotify(a);
+        }
+      }
     }
   });
+
+  // When the connection transitions Live → Idle, add a "connection lost" alert.
+  ref.listen<bool>(wsConnectedProvider, (prev, next) {
+    final wasLive = prev ?? false;
+    if (wasLive && !next) {
+      final now = DateTime.now();
+      final minuteKey =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
+          '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final alertId = 'esp32_offline_$minuteKey';
+      // Avoid duplicate if already in list
+      if (!notifier.state.any((a) => a.id == alertId)) {
+        final offlineAlert = AlertItem(
+          id: alertId,
+          type: 'system',
+          title: 'ESP32 Connection Lost',
+          description:
+              'No data received from the sensor. Check your network or device power.',
+          timestamp: now.toIso8601String(),
+          severity: 'warning',
+        );
+        notifier.addAlert(offlineAlert);
+        // Cache so it survives hot restart
+        ref.read(cachedAlertsProvider.notifier).addOrUpdate(offlineAlert);
+        // Also show a native OS notification (if push notifications are enabled)
+        if (ref.read(pushNotificationsEnabledProvider)) {
+          LocalNotificationService().showEsp32Offline();
+        }
+      }
+    }
+  });
+
   return notifier;
 });
 
 class AlertsNotifier extends StateNotifier<List<AlertItem>> {
   AlertsNotifier() : super([]);
+  final Set<String> _notifiedIds = {};
+
   void setAlerts(List<AlertItem> alerts) => state = alerts;
   void addAlert(AlertItem alert) => state = [...state, alert];
   void removeAlert(String id) =>
       state = state.where((a) => a.id != id).toList();
+
+  bool wasNotified(String id) => _notifiedIds.contains(id);
+  void markNotified(String id) => _notifiedIds.add(id);
 }
 
 final devicesProvider =
@@ -552,8 +983,9 @@ final liveChartPointsProvider =
 
   // Pre-seed from Firestore: load the last 60 minutes of sensor_readings on startup.
   ref.listen<AsyncValue<String?>>(linkedDeviceIdProvider, (_, next) {
-    final deviceId = next.valueOrNull;
-    if (deviceId == null || deviceId.isEmpty) return;
+    if (next.isLoading) return; // Wait until async resolves
+    final deviceId = next.valueOrNull ?? 'agos-zksl9QK3';
+    if (deviceId.isEmpty) return;
     final service = ref.read(firestoreServiceProvider);
     service.fetchReadings(deviceId, days: 0, hours: 1).then((readings) {
       final points = readings.map((r) => LiveChartPoint(
