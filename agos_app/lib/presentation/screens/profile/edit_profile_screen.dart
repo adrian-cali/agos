@@ -26,11 +26,24 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // Pre-populate immediately from currentUser (no spinner)
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _emailController.text = user.email ?? '';
+      final displayName = user.displayName ?? '';
+      final spaceIdx = displayName.indexOf(' ');
+      if (spaceIdx >= 0) {
+        _firstNameController.text = displayName.substring(0, spaceIdx);
+        _lastNameController.text = displayName.substring(spaceIdx + 1);
+      } else {
+        _firstNameController.text = displayName;
+      }
+    }
+    // Then silently update from Firestore in background
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadProfile());
   }
 
   Future<void> _loadProfile() async {
-    setState(() => _isLoading = true);
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
@@ -52,11 +65,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         }
         _phoneController.text = (data['phone'] as String?) ?? '';
         _locationController.text = (data['location'] as String?) ?? '';
+        setState(() {});
       }
     } catch (e) {
       debugPrint('EditProfile load error: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -131,14 +143,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFFF4F8FB),
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF00B8DB)),
-        ),
-      );
-    }
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(

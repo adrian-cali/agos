@@ -267,7 +267,7 @@ class _PairingDeviceScreenState extends State<PairingDeviceScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: const LinearProgressIndicator(
-                        value: 0.5,
+                        value: 0.71,
                         minHeight: 8,
                         backgroundColor: Color.fromRGBO(15, 23, 42, 0.20),
                         valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),

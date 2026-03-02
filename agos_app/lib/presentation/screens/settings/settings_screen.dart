@@ -62,6 +62,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
         child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 16),
           child: Column(
             children: [
               // Header section (no animation – always visible)
@@ -69,7 +70,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               // Settings content
               const SizedBox(height: 19),
               _buildAnimated(0, _buildSettingsContent()),
-              const SizedBox(height: 100), // Bottom padding for navigation
+              const SizedBox(height: 24), // Bottom padding for navigation
             ],
           ),
         ),
@@ -319,12 +320,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryAccent.withValues(alpha: 0.1),
+                  color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Icon(
                   icon,
-                  color: AppColors.primaryAccent,
+                  color: const Color(0xFF00D3F2),
                   size: 20,
                 ),
               ),
@@ -480,12 +481,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF009966).withValues(alpha: 0.1),
+                  color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Icon(
                   Icons.filter_alt_outlined,
-                  color: Color(0xFF009966),
+                  color: Color(0xFF00D3F2),
                   size: 20,
                 ),
               ),
@@ -551,7 +552,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           title: const Row(
             children: [
               Icon(Icons.filter_alt_outlined,
-                  color: Color(0xFF009966), size: 22),
+                  color: Color(0xFF00D3F2), size: 22),
               SizedBox(width: 8),
               Text(
                 'Filter Cleaning Reminder',
@@ -590,7 +591,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       height: 18,
                       decoration: BoxDecoration(
                         color: enabled
-                            ? const Color(0xFF009966)
+                            ? const Color(0xFF2B7FFF)
                             : const Color(0xFFCBD5E1),
                         borderRadius: BorderRadius.circular(999),
                       ),
@@ -634,7 +635,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: selected
-                            ? const Color(0xFF009966)
+                            ? const Color(0xFF2B7FFF)
                             : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(20),
                         border: selected
@@ -669,7 +670,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 children: [
                   IconButton(
                     icon: const Icon(Icons.remove_circle_outline,
-                        color: Color(0xFF009966)),
+                        color: Color(0xFF2B7FFF)),
                     onPressed: () {
                       if (selectedDay > 1) {
                         setDlgState(() => selectedDay--);
@@ -691,7 +692,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   ),
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline,
-                        color: Color(0xFF009966)),
+                        color: Color(0xFF2B7FFF)),
                     onPressed: () {
                       if (selectedDay < 28) {
                         setDlgState(() => selectedDay++);
@@ -721,7 +722,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF009966),
+                backgroundColor: const Color(0xFF2B7FFF),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),

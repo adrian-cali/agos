@@ -22,7 +22,8 @@ class BottomNavBar extends StatelessWidget {
           height: 83,
           padding: const EdgeInsets.only(top: 1.18, left: 16, right: 16, bottom: 1.18),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildNavItem(
                 context,
@@ -65,35 +66,41 @@ class BottomNavBar extends StatelessWidget {
   }) {
     final isActive = currentIndex == index;
     return Expanded(
-      child: GestureDetector(
+      child: InkWell(
         onTap: () {
           if (!isActive) {
             Navigator.pushReplacementNamed(context, route);
           }
         },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 12),
-            Icon(
-              isActive ? activeIcon : icon,
-              color: isActive ? const Color(0xFF00D3F2) : const Color(0xFF4A5565),
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
+        splashColor: const Color(0xFF00D3F2).withValues(alpha: 0.1),
+        highlightColor: const Color(0xFF00D3F2).withValues(alpha: 0.05),
+        child: SizedBox(
+          height: double.infinity,
+          width: double.infinity,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 12),
+              Icon(
+                isActive ? activeIcon : icon,
                 color: isActive ? const Color(0xFF00D3F2) : const Color(0xFF4A5565),
-                fontSize: 12,
-                fontFamily: 'Arial',
-                fontWeight: FontWeight.normal,
-                height: 16 / 12,
+                size: 24,
               ),
-            ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isActive ? const Color(0xFF00D3F2) : const Color(0xFF4A5565),
+                  fontSize: 12,
+                  fontFamily: 'Arial',
+                  fontWeight: FontWeight.normal,
+                  height: 16 / 12,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );

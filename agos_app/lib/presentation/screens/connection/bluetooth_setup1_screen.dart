@@ -214,71 +214,6 @@ class _BluetoothSetup1ScreenState extends State<BluetoothSetup1Screen> {
                     ],
                   ),
                   ),
-                  const SizedBox(height: 24),
-
-                  // ── Simulation mode toggle (for testing without hardware) ──
-                  StatefulBuilder(
-                    builder: (context, setLocal) {
-                      return GestureDetector(
-                        onTap: () {
-                          setLocal(() {
-                            _ble.simulationMode = !_ble.simulationMode;
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(
-                              _ble.simulationMode
-                                  ? '🧪 Simulation mode ON — fake devices & WiFi networks will be shown'
-                                  : '📡 Simulation mode OFF — using real hardware',
-                            ),
-                            duration: const Duration(seconds: 3),
-                          ));
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _ble.simulationMode
-                                ? const Color(0xFFDCFCE7)
-                                : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _ble.simulationMode
-                                  ? const Color(0xFF16A34A)
-                                  : const Color(0xFFCBD5E1),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _ble.simulationMode
-                                    ? Icons.science
-                                    : Icons.science_outlined,
-                                size: 16,
-                                color: _ble.simulationMode
-                                    ? const Color(0xFF16A34A)
-                                    : const Color(0xFF64748B),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _ble.simulationMode
-                                    ? 'Simulation Mode: ON'
-                                    : 'Simulation Mode: OFF',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: _ble.simulationMode
-                                      ? const Color(0xFF16A34A)
-                                      : const Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
 
                   // Bottom action (Next)
                   // SizedBox(
@@ -321,7 +256,7 @@ class _BluetoothSetup1ScreenState extends State<BluetoothSetup1Screen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: const LinearProgressIndicator(
-                        value: 0.25,
+                        value: 0.14,
                         minHeight: 8,
                         backgroundColor: Color.fromRGBO(15, 23, 42, 0.20),
                         valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),

@@ -587,7 +587,7 @@ class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: const LinearProgressIndicator(
-                        value: 0.25,
+                        value: 0.43,
                         minHeight: 8,
                         backgroundColor: Color.fromRGBO(15, 23, 42, 0.20),
                         valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),

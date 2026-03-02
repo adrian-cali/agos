@@ -82,7 +82,7 @@ class DeviceManagementScreen extends ConsumerWidget {
                 height: 56,
                 child: ElevatedButton.icon(
                   onPressed: () => Navigator.pushNamed(
-                      context, '/connection-method'),
+                      context, '/device-setup-intro'),
                   icon: const Icon(Icons.add),
                   label: const Text('Add New Device',
                       style: TextStyle(

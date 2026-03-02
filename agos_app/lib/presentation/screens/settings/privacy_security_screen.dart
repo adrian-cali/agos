@@ -127,7 +127,9 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: loading ? null : () => Navigator.pop(ctx),
+                onPressed: loading ? null : () {
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
                 child: const Text('Cancel',
                     style: TextStyle(color: Color(0xFF62748E))),
               ),

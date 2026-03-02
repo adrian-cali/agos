@@ -116,6 +116,62 @@ The standalone `/wifi-setup` entry point from `/connection-method` will be remov
 - Step 2 (Scan/Connect): Blue gradient (`#1447E6` → `#0092B8`)
 - Step 3 (WiFi): Green gradient (`#00B894` → `#00CEC9`)
 
+---
+
+## 3.0 Design Consistency Requirements
+
+The new `DeviceSetupIntroScreen` **must look and feel like the existing setup screens**. Do not introduce new design patterns. Reuse the following elements as-is from the current screens:
+
+### Typography
+- **Headers:** `Poppins`, bold or semi-bold, `Color(0xFF141A1E)` or `Color(0xFF1D293D)`
+- **Body / subtitles:** `Inter`, regular, `Color(0xFF45556C)` or `Color(0xFF62748E)`
+- **Section labels:** `Poppins`, `FontWeight.w700`, gradient ShaderMask with `[Color(0xFF1447E6), Color(0xFF0092B8)]`
+
+### Layout
+- `Scaffold` with `backgroundColor: Color(0xFFF4F8FB)` (same as all settings/setup screens)
+- Top progress bar: `LinearProgressIndicator` with `Color(0xFF00D3F2)` / `Color(0xFF2B7FFF)` gradient (same as other setup screens)
+- Content wrapped in `SafeArea` + `SingleChildScrollView` with `horizontal: 25` padding
+- Back button: `Icons.arrow_back_ios`, size 20, `Color(0xFF141A1E)` (same header pattern)
+
+### Cards
+- White rounded cards: `borderRadius: 16`, `boxShadow` with `Color(0xFF5DADE2).withValues(alpha: 0.15)`, `blurRadius: 8`
+- Same `border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.18)` used in settings cards
+
+### Buttons
+- **Primary ("Start Setup"):** Full-width gradient container `[Color(0xFF00B8DB), Color(0xFF155DFC)]`, `borderRadius: 14`, height 52, white `Poppins` text
+- **Secondary ("Back"):** Outlined style matching existing secondary buttons, `Color(0xFF62748E)` text
+
+### Step Icon Circles
+- Same 48×48 gradient circle pattern used in dashboard and notification cards
+- `borderRadius: 20` (circular with `BorderRadius.circular(20)` or `BoxShape.circle`)
+
+### Animations
+- Use `FadeSlideIn` widget (already in `lib/presentation/widgets/fade_slide_in.dart`) for content entrance — same as help screen and settings screen
+
+### Do NOT introduce:
+- New fonts or font sizes not already in the codebase
+- New color values not already found in `app_colors.dart` or the existing setup screens
+- Material 3 components that differ visually from the existing screens (e.g. `FilledButton`, `Card` widget)
+- Custom shadows or borders with different values than already used
+
+---
+
+## 3.1 Code Quality — No Syntax or Bracket Errors
+
+**All code written for this feature must be free of syntax errors, especially bracket/brace mismatches.**
+
+### Rules to follow strictly:
+1. **Every `{` must have a matching `}`** — double-check every class, method, if/else, and widget build block closes correctly
+2. **Every `(` must have a matching `)`** — especially in widget constructors with many named parameters
+3. **Every `[` must have a matching `]`** — especially in `children: [...]`, `colors: [...]`, `boxShadow: [...]`
+4. **No dangling commas after the last item** in a list or constructor that would cause parse errors (trailing commas for Dart are fine, but not missing commas between items)
+5. **Run `get_errors` after every file is written or edited** — do not move to the next step until the error count for that file is zero
+6. **Read back the file after creation** to verify the bracket structure before proceeding
+7. **Never truncate a `build()` method halfway** — the entire method must be complete and closed in one write
+8. **Nested widget trees** (e.g. `Column > Card > Padding > Row > Column`) must all be fully closed before the function returns
+9. **Import statements** must each be on their own line, terminated with `;`, and placed before `part` directives
+10. **No placeholder comments** like `// ... existing code ...` — always write complete, real code
+
 **Also:** Move the **Simulation Mode toggle** from `bluetooth_setup1_screen.dart` to this intro screen — it's more logical to enable simulation at the start of the flow.
 
 ---
