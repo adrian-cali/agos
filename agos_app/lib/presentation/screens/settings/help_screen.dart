@@ -384,9 +384,9 @@ class HelpScreen extends StatelessWidget {
           Container(
             width: 48,
             height: 48,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 colors: [Color(0xFF00D3F2), Color(0xFF155DFC)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,

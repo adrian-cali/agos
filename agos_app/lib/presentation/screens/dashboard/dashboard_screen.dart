@@ -300,7 +300,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             animation: _particleController,
             builder: (context, child) {
               return CustomPaint(
-                size: Size(double.infinity, 150),
+                size: const Size(double.infinity, 150),
                 painter: ParticlesPainter(_particles, _particleController.value),
               );
             },
@@ -409,8 +409,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         deviceLocation.isNotEmpty
                             ? deviceLocation
                             : 'No location set',
-                        style: TextStyle(
-                          color: const Color(0xFFBEDBFF),
+                        style: const TextStyle(
+                          color: Color(0xFFBEDBFF),
                           fontSize: 12,
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.w400,
@@ -545,10 +545,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
+                  const Text(
                     'System Status',
                     style: TextStyle(
-                      color: const Color(0xFF62748E),
+                      color: Color(0xFF62748E),
                       fontSize: 14,
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w400,
@@ -559,7 +559,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     shaderCallback: (bounds) => const LinearGradient(
                       colors: [Color(0xFF1447E6), Color(0xFF0092B8)],
                     ).createShader(bounds),
-                    child: Text(
+                    child: const Text(
                       'Operational',
                       style: TextStyle(
                         fontSize: 16,
@@ -595,7 +595,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   ),
                 ],
               ),
-              child: Text(
+              child: const Text(
                 'Operational',
                 style: TextStyle(
                   color: Colors.white,
@@ -612,7 +612,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _buildSectionTitle(String title) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
       child: Padding(
         padding: const EdgeInsets.only(left: 4),
@@ -622,7 +622,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           ).createShader(bounds),
           child: Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 16,
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w700,
@@ -711,8 +711,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             children: [
                               Text(
                                 title,
-                                style: TextStyle(
-                                  color: const Color(0xFF62748E),
+                                style: const TextStyle(
+                                  color: Color(0xFF62748E),
                                   fontSize: 14,
                                   fontFamily: 'Inter',
                                   fontWeight: FontWeight.w400,
@@ -725,7 +725,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 ).createShader(bounds),
                                 child: Text(
                                   value,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontFamily: 'Inter',
                                     fontWeight: FontWeight.w500,
@@ -776,8 +776,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     // Target text
                     Text(
                       target,
-                      style: TextStyle(
-                        color: const Color(0xFF90A1B9),
+                      style: const TextStyle(
+                        color: Color(0xFF90A1B9),
                         fontSize: 12,
                         fontFamily: 'Inter',
                         fontWeight: FontWeight.w400,
@@ -794,36 +794,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _buildChartsSection() {
-    return Column(
+    return const Column(
       children: [
         _HistoricalChartCard(
           label: 'Turbidity',
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             colors: [Color(0xFF00B8DB), Color(0xFF155DFC)],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
-          primaryColor: const Color(0xFF00B8DB),
+          primaryColor: Color(0xFF00B8DB),
         ),
-        const SizedBox(height: 20),
+        SizedBox(height: 20),
         _HistoricalChartCard(
           label: 'pH',
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             colors: [Color(0xFFC27AFF), Color(0xFFF6339A)],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
-          primaryColor: const Color(0xFFC27AFF),
+          primaryColor: Color(0xFFC27AFF),
         ),
-        const SizedBox(height: 20),
+        SizedBox(height: 20),
         _HistoricalChartCard(
           label: 'TDS',
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             colors: [Color(0xFF7C86FF), Color(0xFF2B7FFF)],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
-          primaryColor: const Color(0xFF7C86FF),
+          primaryColor: Color(0xFF7C86FF),
         ),
       ],
     );
@@ -874,7 +874,7 @@ class ParticlesPainter extends CustomPainter {
     for (final particle in particles) {
       particle.update(size.width, size.height, animationValue * 20);
       
-      paint.color = Color(0xFF53EAFD).withValues(alpha: particle.opacity * 0.3);
+      paint.color = const Color(0xFF53EAFD).withValues(alpha: particle.opacity * 0.3);
       canvas.drawCircle(
         Offset(particle.x, particle.y),
         particle.size,
@@ -1313,8 +1313,8 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.show_chart_rounded,
-                          size: 40, color: const Color(0xFFCFD8DC)),
+                      const Icon(Icons.show_chart_rounded,
+                          size: 40, color: Color(0xFFCFD8DC)),
                       const SizedBox(height: 12),
                       Text(
                         _selectedPeriod == TimePeriod.oneHour
@@ -1364,7 +1364,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                     // Keep the view centered when zooming
                     final oldWindow = _effectiveMaxX / _xZoom;
                     final newWindow = _effectiveMaxX / newZoom;
-                    final chartWidth = 300.0;
+                    const chartWidth = 300.0;
                     final focalRatio = details.localFocalPoint.dx / chartWidth;
                     _xZoom = newZoom;
                     _xPanOffset = (_xPanOffset + focalRatio * (oldWindow - newWindow))

@@ -457,7 +457,7 @@ class _DeviceInformationScreenState
     String? Function(String?)? validator,
     bool isRequired = true,
   }) {
-    String? _composedValidator(String? value) {
+    String? composedValidator(String? value) {
       if (isRequired && (value == null || value.trim().isEmpty)) {
         return '$label is required';
       }
@@ -485,7 +485,7 @@ class _DeviceInformationScreenState
         TextFormField(
           controller: controller,
           keyboardType: keyboardType,
-          validator: _composedValidator,
+          validator: composedValidator,
           autovalidateMode: AutovalidateMode.onUserInteraction,
           cursorColor: const Color(0xFF0A1929),
           cursorErrorColor: const Color(0xFF0A1929),

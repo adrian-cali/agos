@@ -198,12 +198,12 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
           .get();
 
       // Recursively convert Firestore Timestamps to ISO strings
-      Object? _sanitize(Object? val) {
+      Object? sanitize(Object? val) {
         if (val is Timestamp) return val.toDate().toIso8601String();
         if (val is Map) {
-          return val.map((k, v) => MapEntry(k, _sanitize(v)));
+          return val.map((k, v) => MapEntry(k, sanitize(v)));
         }
-        if (val is List) return val.map(_sanitize).toList();
+        if (val is List) return val.map(sanitize).toList();
         return val;
       }
 
@@ -226,7 +226,7 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
                   'pump_active': r.pumpActive,
                 })
             .toList(),
-        'profile': _sanitize(profile.data()),
+        'profile': sanitize(profile.data()),
       };
 
       final json = const JsonEncoder.withIndent('  ').convert(export);
@@ -426,9 +426,9 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
                     border: Border.all(
                         color: const Color(0xFFBEDBFF), width: 1.18),
                   ),
-                  child: Row(
+                  child: const Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Icon(Icons.info_outline,
                           size: 20, color: Color(0xFF1C398E)),
                       SizedBox(width: 12),

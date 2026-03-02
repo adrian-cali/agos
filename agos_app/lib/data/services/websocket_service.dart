@@ -574,15 +574,15 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   // Only messages that come directly from the ESP32 sensor (relayed in real-time
   // by the backend) count as "Live". The initial state_snapshot on connect is
   // excluded because it contains cached/stale data from the backend's memory.
-  const Set<String> _sensorMessageTypes = {
+  const Set<String> sensorMessageTypes = {
     'tank_update',       // emitted by backend's handle_sensor_data() — real-time ESP32 data
     'quality_update',    // emitted by backend's handle_sensor_data() — real-time ESP32 data
     'sensor_update',     // alternative sensor data message type
     'water_quality_update',
   };
-  Timer? _staleTimer;
+  Timer? staleTimer;
 
-  void _markOffline(Ref ref) {
+  void markOffline(Ref ref) {
     // Only fire the alert if we were previously live
     if (!ref.read(wsConnectedProvider)) return;
     ref.read(wsConnectedProvider.notifier).state = false;
@@ -593,23 +593,23 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   final service = WebSocketService();
 
   service.onMessageReceived = (type) {
-    if (!_sensorMessageTypes.contains(type)) return;
+    if (!sensorMessageTypes.contains(type)) return;
     final now = DateTime.now();
     ref.read(wsLastDataProvider.notifier).update(now);
     ref.read(wsConnectedProvider.notifier).state = true;
 
     // Auto-set Live = false if no sensor data arrives within 15 seconds.
-    _staleTimer?.cancel();
-    _staleTimer = Timer(const Duration(seconds: 15), () {
-      _markOffline(ref);
+    staleTimer?.cancel();
+    staleTimer = Timer(const Duration(seconds: 15), () {
+      markOffline(ref);
     });
   };
 
   // When the WS itself disconnects, immediately mark as not live.
   service.onConnectionChanged = (connected) {
     if (!connected) {
-      _staleTimer?.cancel();
-      _markOffline(ref);
+      staleTimer?.cancel();
+      markOffline(ref);
     } else {
       // Push saved thresholds immediately on each reconnect.
       final thresholds = ref.read(userThresholdsProvider).valueOrNull;
@@ -627,7 +627,7 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   // Connect can be called manually when needed
   
   ref.onDispose(() {
-    _staleTimer?.cancel();
+    staleTimer?.cancel();
     service.disconnect();
   });
   return service;
@@ -689,7 +689,7 @@ final alertsProvider =
   if (cached.isNotEmpty) notifier.setAlerts(cached);
 
   /// Fire an OS notification for an alert if not yet shown.
-  void _maybeNotify(AlertItem alert) {
+  void maybeNotify(AlertItem alert) {
     if (notifier.wasNotified(alert.id)) return;
     notifier.markNotified(alert.id);
 
@@ -739,7 +739,7 @@ final alertsProvider =
       // Notify for warning/critical threshold alerts
       for (final a in serverAlerts) {
         if (a.type == 'water_quality' || a.severity == 'critical' || a.severity == 'warning') {
-          _maybeNotify(a);
+          maybeNotify(a);
         }
       }
     } else if (type == 'system_alert') {
@@ -747,7 +747,7 @@ final alertsProvider =
       notifier.addAlert(alert);
       // Cache this alert
       ref.read(cachedAlertsProvider.notifier).addOrUpdate(alert);
-      _maybeNotify(alert);
+      maybeNotify(alert);
     } else if (type == 'alerts_updated') {
       final serverAlerts = (data['alerts'] as List?)
               ?.map((a) => AlertItem.fromJson(a))
@@ -767,7 +767,7 @@ final alertsProvider =
       ref.read(cachedAlertsProvider.notifier).addOrUpdateAll(serverAlerts);
       for (final a in serverAlerts) {
         if (a.type == 'water_quality' || a.severity == 'critical' || a.severity == 'warning') {
-          _maybeNotify(a);
+          maybeNotify(a);
         }
       }
     }

@@ -176,8 +176,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             children: [
               Text(
                 _greeting(),
-                style: TextStyle(
-                  color: const Color(0xFF90A5B4),
+                style: const TextStyle(
+                  color: Color(0xFF90A5B4),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   fontFamily: 'Poppins',
@@ -192,8 +192,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   return Text(
                     name.isEmpty ? '...' : name,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFF141A1E),
+                    style: const TextStyle(
+                      color: Color(0xFF141A1E),
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'Poppins',
@@ -280,7 +280,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               animation: _waveAnimation,
               builder: (context, child) {
                 return CustomPaint(
-                  size: Size(double.infinity, 160),
+                  size: const Size(double.infinity, 160),
                   painter: WaterWavePainter(
                     animationValue: _waveAnimation.value,
                   ),
@@ -295,9 +295,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 children: [
                   // Left side content
                   Expanded(
-                    child: Container(
+                    child: SizedBox(
                       width: 100,
-                      child: Column(
+                      child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -308,7 +308,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               Text(
                                 'February 01, 2026',
                                 style: TextStyle(
-                                  color: const Color(0xFF90A5B4),
+                                  color: Color(0xFF90A5B4),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w400,
                                   fontFamily: 'Poppins',
@@ -316,11 +316,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   height: 0.83, // 10px line height / 12px font size
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              SizedBox(height: 6),
                               Text(
                                 'You Saved',
                                 style: TextStyle(
-                                  color: const Color(0xFF1C5B8D),
+                                  color: Color(0xFF1C5B8D),
                                   fontSize: 17,
                                   fontWeight: FontWeight.w500,
                                   fontFamily: 'Poppins',
@@ -336,7 +336,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               Text(
                                 '18%',
                                 style: TextStyle(
-                                  color: const Color(0xFF1C5B8D),
+                                  color: Color(0xFF1C5B8D),
                                   fontSize: 47,
                                   fontWeight: FontWeight.w500,
                                   fontFamily: 'Poppins',
@@ -344,11 +344,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   height: 1, // leading-none
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4),
                               Text(
                                 '870.9 gallons',
                                 style: TextStyle(
-                                  color: const Color(0xFF384144),
+                                  color: Color(0xFF384144),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w400,
                                   fontFamily: 'Poppins',
@@ -363,7 +363,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                   ),
                   // Right side - AGOS Blue Logo
-                  Container(
+                  SizedBox(
                     width: 135,
                     height: 135,
                     child: SvgPicture.asset(
@@ -425,14 +425,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Main Water Tank',
                       style: TextStyle(
-                        color: const Color(0xFF2C3E50),
+                        color: Color(0xFF2C3E50),
                         fontSize: 18,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Poppins',
@@ -441,7 +441,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     Text(
                       'Real-time monitoring',
                       style: TextStyle(
-                        color: const Color(0xFF7F8C8D),
+                        color: Color(0xFF7F8C8D),
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Poppins',
@@ -546,10 +546,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              const Text(
                 'Flow Rate',
                 style: TextStyle(
-                  color: const Color(0xFF7F8C8D),
+                  color: Color(0xFF7F8C8D),
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
                   fontFamily: 'Inter',
@@ -574,8 +574,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   const SizedBox(width: 8),
                   Text(
                     '${tankData.flowRate.toStringAsFixed(1)} L/min',
-                    style: TextStyle(
-                      color: const Color(0xFF00D3F2),
+                    style: const TextStyle(
+                      color: Color(0xFF00D3F2),
                       fontSize: 14,
                       fontWeight: FontWeight.w400,
                       fontFamily: 'Inter',
@@ -767,10 +767,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
             ),
             const SizedBox(height: 4),
-            Text(
+            const Text(
               'Current Level',
               style: TextStyle(
-                color: const Color(0xFF7F8C8D),
+                color: Color(0xFF7F8C8D),
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
                 fontFamily: 'Poppins',
@@ -872,8 +872,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       children: [
         Text(
           label,
-          style: TextStyle(
-            color: const Color(0xFF7F8C8D),
+          style: const TextStyle(
+            color: Color(0xFF7F8C8D),
             fontSize: 14,
             fontWeight: FontWeight.w400,
             fontFamily: 'Poppins',
@@ -881,8 +881,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         ),
         Text(
           value,
-          style: TextStyle(
-            color: const Color(0xFF00D3F2),
+          style: const TextStyle(
+            color: Color(0xFF00D3F2),
             fontSize: 14,
             fontWeight: FontWeight.w400,
             fontFamily: 'Poppins',
@@ -989,14 +989,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Pump Control',
                       style: TextStyle(
-                        color: const Color(0xFF2C3E50),
+                        color: Color(0xFF2C3E50),
                         fontSize: 18,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Poppins',
@@ -1005,7 +1005,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     Text(
                       'Manual pump operation',
                       style: TextStyle(
-                        color: const Color(0xFF7F8C8D),
+                        color: Color(0xFF7F8C8D),
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Poppins',
@@ -1089,10 +1089,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Center(
               child: Column(
                 children: [
-                  Text(
+                  const Text(
                     'Pump Running',
                     style: TextStyle(
-                      color: const Color(0xFF00B8DB),
+                      color: Color(0xFF00B8DB),
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                       fontFamily: 'Poppins',
@@ -1136,10 +1136,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'Time remaining',
                     style: TextStyle(
-                      color: const Color(0xFF7F8C8D),
+                      color: Color(0xFF7F8C8D),
                       fontSize: 12,
                       fontFamily: 'Inter',
                     ),
@@ -1150,10 +1150,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             const SizedBox(height: 16),
           ] else ...[
             // ── Duration selector ──────────────────────────────────
-            Text(
+            const Text(
               'Duration',
               style: TextStyle(
-                color: const Color(0xFF7F8C8D),
+                color: Color(0xFF7F8C8D),
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
                 fontFamily: 'Inter',
@@ -1307,7 +1307,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   Widget _buildBottomLogo() {
-    return Container(
+    return SizedBox(
       width: 45,
       height: 23.2,
       child: SvgPicture.asset(

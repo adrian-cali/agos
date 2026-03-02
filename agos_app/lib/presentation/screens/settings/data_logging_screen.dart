@@ -297,8 +297,8 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                         border: Border.all(
                             color: const Color(0xFFBAE6FD), width: 1),
                       ),
-                      child: Row(
-                        children: const [
+                      child: const Row(
+                        children: [
                           Icon(Icons.info_outline,
                               size: 16, color: Color(0xFF0369A1)),
                           SizedBox(width: 8),
@@ -363,9 +363,9 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                         border: Border.all(
                             color: const Color(0xFFFEE685), width: 1.18),
                       ),
-                      child: Row(
+                      child: const Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Icon(Icons.warning_amber_outlined,
                               size: 20, color: Color(0xFF7B3306)),
                           SizedBox(width: 12),
@@ -589,8 +589,8 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.history, size: 20, color: Color(0xFF314158)),
               SizedBox(width: 12),
               Expanded(

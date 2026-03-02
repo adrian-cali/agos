@@ -261,12 +261,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.save_outlined,
+                              const Icon(Icons.save_outlined,
                                   color: Colors.white, size: 16),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
                                 _isSaving ? 'Saving…' : 'Save Changes',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,

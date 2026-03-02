@@ -93,7 +93,7 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        action: SnackBarAction(
+        action: const SnackBarAction(
           label: 'Settings',
           onPressed: openAppSettings,
         ),

@@ -99,13 +99,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 ),
               ),
               const SizedBox(width: 4),
-              Text(
+              const Text(
                 'SETTINGS',
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF141A1E),
+                  color: Color(0xFF141A1E),
                   height: 32 / 20,
                 ),
               ),
@@ -286,11 +286,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0x141BA9E1),
+            color: Color(0x141BA9E1),
             blurRadius: 45,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -335,22 +335,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontFamily: 'Poppins',
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: const Color(0xFF141A1E),
+                        color: Color(0xFF141A1E),
                       ),
                     ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
-                          color: const Color(0xFF90A5B4),
+                          color: Color(0xFF90A5B4),
                         ),
                       ),
                     ],
@@ -400,22 +400,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               children: [
                 Text(
                   title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFF141A1E),
+                    color: Color(0xFF141A1E),
                   ),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
-                      color: const Color(0xFF90A5B4),
+                      color: Color(0xFF90A5B4),
                     ),
                   ),
                 ],
@@ -749,11 +749,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0x141BA9E1),
+            color: Color(0x141BA9E1),
             blurRadius: 45,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -780,13 +780,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   ),
                 ),
                 const SizedBox(width: 16),
-                Text(
+                const Text(
                   'Sign Out',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFFE74C3C),
+                    color: Color(0xFFE74C3C),
                   ),
                 ),
               ],
@@ -833,34 +833,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
+        title: const Text(
           'Sign Out',
           style: TextStyle(
             fontFamily: 'Poppins',
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF141A1E),
+            color: Color(0xFF141A1E),
           ),
         ),
-        content: Text(
+        content: const Text(
           'Are you sure you want to sign out?',
           style: TextStyle(
             fontFamily: 'Poppins',
             fontSize: 14,
             fontWeight: FontWeight.w400,
-            color: const Color(0xFF90A5B4),
+            color: Color(0xFF90A5B4),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
+            child: const Text(
               'Cancel',
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: const Color(0xFF90A5B4),
+                color: Color(0xFF90A5B4),
               ),
             ),
           ),
@@ -875,13 +875,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     context, '/login', (r) => false);
               }
             },
-            child: Text(
+            child: const Text(
               'Sign Out',
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: const Color(0xFFE74C3C),
+                color: Color(0xFFE74C3C),
               ),
             ),
           ),

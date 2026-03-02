@@ -17,9 +17,9 @@ void showNotificationModal(BuildContext context) {
     barrierLabel: 'Dismiss notifications',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 300),
-    pageBuilder: (context, anim1, anim2) => Material(
+    pageBuilder: (context, anim1, anim2) => const Material(
       type: MaterialType.transparency,
-      child: const _NotificationModal(),
+      child: _NotificationModal(),
     ),
     transitionBuilder: (context, anim1, anim2, child) {
       return FadeTransition(
