@@ -5,7 +5,7 @@ class ApiConfig {
   // Set this to your deployed backend URL for production / demo builds.
   // Example: 'https://agos-backend.up.railway.app'
   // Leave empty ('') to fall back to the local dev server (localhost:8000).
-  static const String _productionUrl = '';
+  static const String _productionUrl = 'https://agos-production.up.railway.app';
   // ──────────────────────────────────────────────────────────────────────────
 
   static const int port = 8000;
