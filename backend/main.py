@@ -89,6 +89,9 @@ state = {
         "remaining_seconds": 0,
         "last_command": None,
     },
+    # ESP32/sensor connectivity — true when at least one sensor WS is connected
+    "sensor_connected": False,
+    "sensor_last_seen": None,
 }
 
 # Historical data storage
@@ -192,14 +195,22 @@ class ConnectionManager:
     async def connect_sensor(self, websocket: WebSocket):
         await websocket.accept()
         self.sensor_connections.add(websocket)
+        now = datetime.now().isoformat()
+        state["sensor_connected"] = True
+        state["sensor_last_seen"] = now
         logger.info(f"Sensor connected. Total: {len(self.sensor_connections)}")
+        await self.broadcast_to_apps({
+            "type": "sensor_status",
+            "connected": True,
+            "last_seen": now,
+        })
 
     async def connect_app(self, websocket: WebSocket):
         await websocket.accept()
         self.app_connections.add(websocket)
         logger.info(f"App connected. Total: {len(self.app_connections)}")
 
-        # Send state snapshot (includes current pump state)
+        # Send state snapshot (includes current pump state and sensor connectivity)
         await websocket.send_json({
             "type": "state_snapshot",
             "timestamp": datetime.now().isoformat(),
@@ -208,11 +219,23 @@ class ConnectionManager:
             "alerts": state["alerts"],
             "devices": state["devices"],
             "pump": state["pump"],
+            "sensor_connected": state["sensor_connected"],
+            "sensor_last_seen": state["sensor_last_seen"],
         })
 
-    def disconnect_sensor(self, websocket: WebSocket):
+    async def disconnect_sensor(self, websocket: WebSocket):
         self.sensor_connections.discard(websocket)
+        still_connected = len(self.sensor_connections) > 0
+        now = datetime.now().isoformat()
+        state["sensor_connected"] = still_connected
+        if still_connected:
+            state["sensor_last_seen"] = now
         logger.info(f"Sensor disconnected. Total: {len(self.sensor_connections)}")
+        await self.broadcast_to_apps({
+            "type": "sensor_status",
+            "connected": still_connected,
+            "last_seen": state["sensor_last_seen"],
+        })
 
     def disconnect_app(self, websocket: WebSocket):
         self.app_connections.discard(websocket)
@@ -680,7 +703,7 @@ async def websocket_sensor(websocket: WebSocket):
                     "timestamp": datetime.now().isoformat()
                 })
     except WebSocketDisconnect:
-        manager.disconnect_sensor(websocket)
+        await manager.disconnect_sensor(websocket)
 
 
 @app.websocket("/ws/app")

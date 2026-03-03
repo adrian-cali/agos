@@ -572,74 +572,66 @@ class CachedAlertsNotifier extends StateNotifier<List<AlertItem>> {
 
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
 
-  // Only messages that come directly from the ESP32 sensor (relayed in real-time
-  // by the backend) count as "Live". The initial state_snapshot on connect is
-  // excluded because it contains cached/stale data from the backend's memory.
-  const Set<String> sensorMessageTypes = {
-    'tank_update',       // emitted by backend's handle_sensor_data() — real-time ESP32 data
-    'quality_update',    // emitted by backend's handle_sensor_data() — real-time ESP32 data
-    'sensor_update',     // alternative sensor data message type
-    'water_quality_update',
-  };
-  Timer? staleTimer;
-
-  void markOffline(Ref ref) {
-    // Only fire the alert if we were previously live
-    if (!ref.read(wsConnectedProvider)) return;
-    ref.read(wsConnectedProvider.notifier).state = false;
-    // The offline alert is injected by alertsProvider via a ref.listen
-    // on wsConnectedProvider — no direct dependency needed here.
-  }
-
   final service = WebSocketService();
 
-  service.onMessageReceived = (type) {
-    if (!sensorMessageTypes.contains(type)) return;
-    final now = DateTime.now();
-    ref.read(wsLastDataProvider.notifier).update(now);
-    ref.read(wsConnectedProvider.notifier).state = true;
+  // ── Live/Idle is driven by the BACKEND’s sensor_status broadcasts ────────────
+  // The backend tracks whether the ESP32 is connected and writes that into:
+  //   • state_snapshot.sensor_connected  (sent on every fresh app connect)
+  //   • sensor_status.connected          (broadcast on ESP32 connect/disconnect)
+  // This means Live/Idle reflects the physical device, not the app’s own WS.
 
-    // Auto-set Live = false if no sensor data arrives within 15 seconds.
-    staleTimer?.cancel();
-    staleTimer = Timer(const Duration(seconds: 15), () {
-      markOffline(ref);
-    });
-  };
+  service.addListener((data) {
+    final type = data['type'] as String? ?? '';
 
-  // When the WS itself disconnects, do NOT immediately mark as offline.
-  // The stale timer (15 s, reset on every sensor message) will mark offline
-  // when sensor data stops. This prevents a "Live → Idle" flicker when the
-  // user refreshes or briefly closes the app while the ESP32 keeps streaming.
+    switch (type) {
+      case 'state_snapshot':
+        // Initialise Live/Idle from server-side sensor state on (re)connect.
+        final sensorConnected = data['sensor_connected'] as bool? ?? false;
+        ref.read(wsConnectedProvider.notifier).state = sensorConnected;
+
+        final lastSeenRaw = data['sensor_last_seen'] as String?;
+        if (lastSeenRaw != null) {
+          try {
+            ref.read(wsLastDataProvider.notifier).update(DateTime.parse(lastSeenRaw));
+          } catch (_) {}
+        }
+        break;
+
+      case 'sensor_status':
+        // Real-time broadcast from backend whenever ESP32 connects or drops.
+        final connected = data['connected'] as bool? ?? false;
+        ref.read(wsConnectedProvider.notifier).state = connected;
+
+        if (connected) {
+          ref.read(wsLastDataProvider.notifier).update(DateTime.now());
+        }
+        break;
+
+      case 'tank_update':
+      case 'quality_update':
+        // Keep last-data timestamp fresh so the UI can show "last seen X ago".
+        ref.read(wsLastDataProvider.notifier).update(DateTime.now());
+        break;
+    }
+  });
+
+  // When the app WS reconnects, push saved thresholds immediately.
   service.onConnectionChanged = (connected) {
-    if (!connected) {
-      // Don't cancel the stale timer — let it fire naturally if sensor data stops.
-      // Only start a fallback timer if there is no active stale timer already.
-      // (If the stale timer is already running, the ESP32 is still streaming and
-      // we will stay Live until 15 s of silence.)
-      if (staleTimer == null || !(staleTimer!.isActive)) {
-        // No recent sensor data — start a short grace period before going Idle.
-        staleTimer = Timer(const Duration(seconds: 15), () {
-          markOffline(ref);
-        });
-      }
-    } else {
-      // Push saved thresholds immediately on each reconnect.
+    if (connected) {
       final thresholds = ref.read(userThresholdsProvider).valueOrNull;
       if (thresholds != null) service.sendThresholds(thresholds);
     }
+    // Do NOT alter wsConnectedProvider here — that’s the ESP32 sensor status,
+    // not the app-to-backend connection status.
   };
-  
+
   // Auto-push user thresholds to backend whenever they change
   // (covers initial load after login and any saves from settings).
   ref.listen<AsyncValue<UserThresholds>>(userThresholdsProvider, (_, next) {
     next.whenData((t) => service.sendThresholds(t));
   });
 
-  // Don't auto-connect immediately - let the app start without WebSocket issues
-  // Connect can be called manually when needed
-  
   ref.onDispose(() {
-    staleTimer?.cancel();
     service.disconnect();
   });
   return service;
