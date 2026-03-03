@@ -1,8 +1,0 @@
-{
-  "dart.flutterSdkPath": "C:\\flutter",
-  "dart.sdkPath": "C:\\flutter\\bin\\cache\\dart-sdk",
-  "tasksync.responseTimeout": "0",
-  "tasksync.humanLikeDelay": true,
-  "tasksync.autopilotText": "You are temporarily in autonomous mode and must now make your own decision. If another question arises, be sure to ask it, as autonomous mode is temporary.",
-  "tasksync.sessionWarningHours": 0
-}
