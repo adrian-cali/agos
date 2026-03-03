@@ -68,17 +68,7 @@ state = {
         "ph": {"value": 7.4, "unit": "", "status": "optimal", "target": "6.5-8.3"},
         "tds": {"value": 347.0, "unit": "ppm", "status": "optimal", "target": "<500 ppm"}
     },
-    "alerts": [
-        {
-            "id": "1",
-            "type": "water_quality",
-            "title": "Water Quality Alert",
-            "description": "All parameters within acceptable range",
-            "timestamp": datetime.now().isoformat(),
-            "is_read": False,
-            "severity": "info"
-        }
-    ],
+    "alerts": [],
     "devices": [
         {
             "id": "AGOS-A1B2",
