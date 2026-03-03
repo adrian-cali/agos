@@ -91,6 +91,21 @@ class FilterReminderNotifier extends StateNotifier<FilterReminderSettings> {
       minute: 0,
     );
   }
+
+  /// Loads settings from SharedPreferences and schedules the OS notification.
+  /// Use this from app startup code (e.g. main.dart) where there is no
+  /// access to a Riverpod container — avoids the `state` accessor restriction.
+  static Future<void> scheduleFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final settings = FilterReminderSettings(
+        dayOfMonth: prefs.getInt(_keyDay) ?? 20,
+        intervalMonths: prefs.getInt(_keyInterval) ?? 1,
+        enabled: prefs.getBool(_keyEnabled) ?? true,
+      );
+      await scheduleNotification(settings);
+    } catch (_) {}
+  }
 }
 
 final filterReminderProvider =

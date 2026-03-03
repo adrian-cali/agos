@@ -12,7 +12,8 @@ class BluetoothSetup2Screen extends StatefulWidget {
   State<BluetoothSetup2Screen> createState() => _BluetoothSetup2ScreenState();
 }
 
-class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen> {
+class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen>
+    with WidgetsBindingObserver {
   bool _locationPermission = false;
   bool _bluetoothPermission = false;
   bool _isRequesting = false;
@@ -24,6 +25,7 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // In simulation mode, pre-grant both permissions and auto-advance
     if (_ble.simulationMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -34,6 +36,39 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen> {
         Future.delayed(const Duration(milliseconds: 400), () {
           if (mounted) Navigator.pushNamed(context, '/ready-to-scan');
         });
+      });
+    } else {
+      // Check if permissions were already granted (e.g. returning to this screen)
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkCurrentStatus());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Re-check permission status when the app resumes (e.g. after going to Settings)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkCurrentStatus();
+    }
+  }
+
+  Future<void> _checkCurrentStatus() async {
+    final locGranted = (await Permission.locationWhenInUse.status).isGranted;
+    final bleGranted = (await Permission.bluetoothScan.status).isGranted &&
+        (await Permission.bluetoothConnect.status).isGranted;
+    if (!mounted) return;
+    setState(() {
+      _locationPermission = locGranted;
+      _bluetoothPermission = bleGranted;
+    });
+    if (locGranted && bleGranted) {
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) Navigator.pushNamed(context, '/ready-to-scan');
       });
     }
   }

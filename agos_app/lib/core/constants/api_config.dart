@@ -1,16 +1,44 @@
 class ApiConfig {
   ApiConfig._();
 
-  // For physical Android devices connected via ADB, use 'adb reverse tcp:8000 tcp:8000'
-  // then the device can reach the host machine via localhost/127.0.0.1.
-  // For Android emulators, 10.0.2.2 maps to host localhost — change back if needed.
-  static String get host {
-    return 'localhost';
-  }
+  // ─── PRODUCTION URL ───────────────────────────────────────────────────────
+  // Set this to your deployed backend URL for production / demo builds.
+  // Example: 'https://agos-backend.up.railway.app'
+  // Leave empty ('') to fall back to the local dev server (localhost:8000).
+  static const String _productionUrl = '';
+  // ──────────────────────────────────────────────────────────────────────────
 
   static const int port = 8000;
 
-  static String get wsAppUrl => 'ws://$host:$port/ws/app';
-  static String get wsSensorUrl => 'ws://$host:$port/ws/sensor';
-  static String get httpBaseUrl => 'http://$host:$port';
+  static bool get _useProduction => _productionUrl.isNotEmpty;
+
+  /// HTTP base URL — used for REST calls.
+  static String get httpBaseUrl {
+    if (_useProduction) return _productionUrl;
+    // Local dev: ADB reverse (adb reverse tcp:8000 tcp:8000) lets real
+    // Android devices reach the host machine via localhost.
+    return 'http://localhost:$port';
+  }
+
+  /// WebSocket URL for the Flutter app to receive live sensor data.
+  static String get wsAppUrl {
+    if (_useProduction) {
+      final base = _productionUrl
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://');
+      return '$base/ws/app';
+    }
+    return 'ws://localhost:$port/ws/app';
+  }
+
+  /// WebSocket URL for the ESP32 sensor to push data.
+  static String get wsSensorUrl {
+    if (_useProduction) {
+      final base = _productionUrl
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://');
+      return '$base/ws/sensor';
+    }
+    return 'ws://localhost:$port/ws/sensor';
+  }
 }

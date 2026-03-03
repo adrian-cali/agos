@@ -1,18 +1,21 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 import '../../../core/constants/connection_method_design.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/ble_provisioning_service.dart';
+import '../../../data/services/firestore_service.dart';
 
-class WifiSetupScreen extends StatefulWidget {
+class WifiSetupScreen extends ConsumerStatefulWidget {
   const WifiSetupScreen({super.key});
 
   @override
-  State<WifiSetupScreen> createState() => _WifiSetupScreenState();
+  ConsumerState<WifiSetupScreen> createState() => _WifiSetupScreenState();
 }
 
-class _WifiSetupScreenState extends State<WifiSetupScreen> {
+class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
   String? _selectedNetwork;
   final _ssidController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -29,6 +32,9 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   @override
   void initState() {
     super.initState();
+    // Rebuild when text changes so the Connect button enables/disables correctly
+    _ssidController.addListener(() => setState(() {}));
+    _passwordController.addListener(() => setState(() {}));
     _scanWifi();
   }
 
@@ -136,10 +142,40 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
 
     if (ssid.isEmpty) return;
 
+    // Guard: make sure BLE is still connected (user may have been on this
+    // screen for a while and the connection dropped, or arrived here without
+    // a real device connected).
+    if (!_ble.simulationMode && !_ble.isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Bluetooth connection lost. Please go back and select your AGOS device again.',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    // Generate device ID now so the ESP32 knows which ID to use when
+    // connecting to the backend WebSocket.
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final deviceId = uid.isNotEmpty ? 'agos-${uid.substring(0, 8)}' : '';
+    if (deviceId.isNotEmpty) {
+      ref.read(setupStateProvider.notifier).setDeviceId(deviceId);
+    }
+
     setState(() => _isConnecting = true);
 
     try {
-      await _ble.sendWifiCredentials(ssid: ssid, password: password);
+      await _ble.sendWifiCredentials(
+        ssid: ssid,
+        password: password,
+        deviceId: deviceId.isNotEmpty ? deviceId : null,
+      );
+      // Disconnect BLE — credentials have been sent; WiFi takes over from here.
+      // The ESP32 can also safely turn off its BLE radio at this point.
+      await _ble.disconnect();
       setState(() => _isConnecting = false);
       if (mounted) Navigator.pushReplacementNamed(context, '/pairing-device');
     } catch (e) {

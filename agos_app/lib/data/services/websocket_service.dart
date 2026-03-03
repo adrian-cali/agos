@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -217,17 +218,17 @@ class WebSocketService {
               listener(data);
             }
           } catch (e) {
-            print('Error parsing WebSocket message: $e');
+            debugPrint('Error parsing WebSocket message: $e');
           }
         },
         onError: (error) {
-          print('WebSocket error: $error');
+          debugPrint('WebSocket error: $error');
           _isConnected = false;
           onConnectionChanged?.call(false);
           _scheduleReconnect();
         },
         onDone: () {
-          print('WebSocket connection closed');
+          debugPrint('WebSocket connection closed');
           _isConnected = false;
           onConnectionChanged?.call(false);
           _scheduleReconnect();
@@ -235,9 +236,9 @@ class WebSocketService {
       );
 
       _startHeartbeat();
-      print('WebSocket connected to ${ApiConfig.wsAppUrl}');
+      debugPrint('WebSocket connected to ${ApiConfig.wsAppUrl}');
     } catch (e) {
-      print('Failed to connect to WebSocket: $e');
+      debugPrint('Failed to connect to WebSocket: $e');
       _isConnected = false;
       onConnectionChanged?.call(false);
       _scheduleReconnect();
@@ -258,7 +259,7 @@ class WebSocketService {
         _channel!.sink.add(jsonEncode(message));
       }
     } catch (e) {
-      print('Error sending WebSocket message: $e');
+      debugPrint('Error sending WebSocket message: $e');
       _isConnected = false;
       _scheduleReconnect();
     }
@@ -319,10 +320,10 @@ class WebSocketService {
     final delay = _reconnectDelay;
     // Cap reconnect delay at 30s
     _reconnectDelay = (_reconnectDelay * 2).clamp(3, 30);
-    print('WebSocket disconnected. Reconnecting in ${delay}s...');
+    debugPrint('WebSocket disconnected. Reconnecting in ${delay}s...');
     _reconnectTimer = Timer(Duration(seconds: delay), () {
       if (!_isConnected) {
-        print('Attempting WebSocket reconnect...');
+        debugPrint('Attempting WebSocket reconnect...');
         _reconnectDelay = 3; // reset on attempt
         connect();
       }
@@ -725,7 +726,7 @@ final alertsProvider =
               .toList() ??
           [];
       // Preserve locally-injected system alerts (e.g. offline alert) not on server
-      final localSystem = notifier.state
+      final localSystem = notifier.currentAlerts
           .where((a) => a.type == 'system')
           .toList();
       final serverIds = serverAlerts.map((a) => a.id).toSet();
@@ -754,7 +755,7 @@ final alertsProvider =
               .toList() ??
           [];
       // Same merge: keep local system alerts
-      final localSystem = notifier.state
+      final localSystem = notifier.currentAlerts
           .where((a) => a.type == 'system')
           .toList();
       final serverIds = serverAlerts.map((a) => a.id).toSet();
@@ -783,7 +784,7 @@ final alertsProvider =
           '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
       final alertId = 'esp32_offline_$minuteKey';
       // Avoid duplicate if already in list
-      if (!notifier.state.any((a) => a.id == alertId)) {
+      if (!notifier.currentAlerts.any((a) => a.id == alertId)) {
         final offlineAlert = AlertItem(
           id: alertId,
           type: 'system',
@@ -810,6 +811,10 @@ final alertsProvider =
 class AlertsNotifier extends StateNotifier<List<AlertItem>> {
   AlertsNotifier() : super([]);
   final Set<String> _notifiedIds = {};
+
+  /// Public read-only view of the current alerts list (avoids accessing
+  /// `state` from outside the notifier, which state_notifier restricts).
+  List<AlertItem> get currentAlerts => state;
 
   void setAlerts(List<AlertItem> alerts) => state = alerts;
   void addAlert(AlertItem alert) => state = [...state, alert];

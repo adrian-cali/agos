@@ -26,12 +26,7 @@ void main() async {
 /// Safe to call every startup — already-scheduled reminders are replaced with
 /// refreshed ones so the interval/day stays in sync with the user's settings.
 Future<void> _ensureFilterReminderScheduled() async {
-  try {
-    final notifier = FilterReminderNotifier();
-    // Allow a brief tick for the async SharedPreferences load in the notifier
-    await Future.delayed(const Duration(milliseconds: 150));
-    await FilterReminderNotifier.scheduleNotification(notifier.state);
-  } catch (_) {}
+  await FilterReminderNotifier.scheduleFromPrefs();
 }
 
 class AgosApp extends StatelessWidget {

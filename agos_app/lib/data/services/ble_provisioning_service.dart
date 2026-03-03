@@ -209,16 +209,26 @@ class BleProvisioningService {
     }
   }
 
-  /// Send WiFi credentials to the connected ESP32.
+  /// Send WiFi credentials (and optional device ID) to the connected ESP32.
+  /// The [deviceId] is the identifier the ESP32 should use when connecting
+  /// to the backend WebSocket: ws://server/ws/{deviceId}
   Future<void> sendWifiCredentials({
     required String ssid,
     required String password,
+    String? deviceId,
   }) async {
     if (simulationMode) {
       await Future.delayed(const Duration(seconds: 1)); // fake send delay
       return;
     }
-    final payload = jsonEncode({'ssid': ssid, 'password': password});
+    if (_classicBluetooth == null && _characteristic == null) {
+      throw Exception('Not connected to a device. Please go back and select your AGOS device.');
+    }
+    final payload = jsonEncode({
+      'ssid': ssid,
+      'password': password,
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+    });
     if (_classicBluetooth != null) {
       // Classic Bluetooth
       final success = await _classicBluetooth!.sendString(payload);

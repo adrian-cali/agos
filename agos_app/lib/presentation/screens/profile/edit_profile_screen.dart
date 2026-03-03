@@ -20,7 +20,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _phoneController = TextEditingController();
   final _locationController = TextEditingController();
 
-  bool _isLoading = false;
   bool _isSaving = false;
 
   @override

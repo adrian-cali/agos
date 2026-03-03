@@ -1,4 +1,3 @@
-import 'package:agos_app/core/constants/app_colors.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';

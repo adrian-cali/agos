@@ -27,10 +27,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   bool _pumpManualOn = false;
   int _selectedPumpDuration = 10; // default 10 minutes
 
-  // Live/Idle clock — ticks every second to keep "Updated X ago" fresh
-  Timer? _clockTimer;
-  DateTime _now = DateTime.now();
-
   @override
   void initState() {
     super.initState();
@@ -43,10 +39,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       duration: const Duration(milliseconds: 600),
       vsync: this,
     )..forward();
-
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
 
     // Connect WebSocket so tankDataProvider and waterQualityProvider get live data.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,7 +53,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     _waveController.dispose();
     _pageController.dispose();
     _pumpCountdownTimer?.cancel();
-    _clockTimer?.cancel();
     super.dispose();
   }
 
@@ -72,12 +63,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return 'Good Evening,';
   }
 
-  String _formatAgo(DateTime last) {
-    final diff = _now.difference(last);
-    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    return '${diff.inHours}h ago';
-  }
 
   /// Wraps [child] with a staggered slide-up + fade-in animation.
   /// [index] (0, 1, 2, …) determines the start offset of the interval.
@@ -104,7 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final tankData = ref.watch(tankDataProvider);
     // Use the real device ID from Firestore; fall back to simulator ID during dev
     final deviceIdAsync = ref.watch(linkedDeviceIdProvider);
-    final deviceId = deviceIdAsync.valueOrNull ?? 'agos-zksl9QK3';
+    final deviceId = deviceIdAsync.valueOrNull ?? '';
     final latestAsync = ref.watch(latestReadingProvider(deviceId));
     final latest = latestAsync.valueOrNull;
     // User threshold settings for dynamic status
@@ -294,10 +279,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Left side content
-                  Expanded(
+                  const Expanded(
                     child: SizedBox(
                       width: 100,
-                      child: const Column(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [

@@ -90,7 +90,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         wsService.requestHistoricalData(metric, period);
       }
     } catch (e) {
-      print('Failed to load historical data: $e');
+      debugPrint('Failed to load historical data: $e');
     }
   }
 
@@ -370,11 +370,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
                 const SizedBox(height: 8),
                 // Logo and title section
-                Container(
-                  // height: 104,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // AGOS Logo and title
                       Row(
@@ -480,8 +478,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -917,7 +914,6 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   double _xZoom = 1.0;   // 1.0 = full period; >1 = zoomed in
   double _xPanOffset = 0.0; // pan offset in X units (minutes or hours)
   double _scaleStartZoom = 1.0;
-  double _scaleStartOffset = 0.0;
   double _effectiveMaxX = 60.0; // updated each frame from _buildChartData
   bool _isZooming = false; // true during pinch — disables chart touch to allow pinch
 
@@ -1347,8 +1343,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
               behavior: HitTestBehavior.opaque,
               onScaleStart: (details) {
                 _scaleStartZoom = _xZoom;
-                _scaleStartOffset = _xPanOffset;
-                if (details.pointerCount >= 2) {
+                  if (details.pointerCount >= 2) {
                   setState(() => _isZooming = true);
                 }
               },

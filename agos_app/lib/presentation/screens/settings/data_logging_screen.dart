@@ -20,15 +20,12 @@ class DataLoggingScreen extends ConsumerStatefulWidget {
 class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   int _retentionDays = 30; // 7, 30, or 90
 
-  // Don't show loading state — show defaults immediately, update silently
-  bool _loadingPrefs = false;
   bool _exportingCsv = false;
   bool _exportingJson = false;
   bool _exportingPdf = false;
-  bool _savingPrefs = false;
 
   String get _deviceId =>
-      ref.read(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
+      ref.read(linkedDeviceIdProvider).valueOrNull ?? '';
 
   @override
   void initState() {
@@ -39,10 +36,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   Future<void> _loadPrefs() async {
     final user = ref.read(currentUserProvider);
-    if (user == null) {
-      if (mounted) setState(() => _loadingPrefs = false);
-      return;
-    }
+    if (user == null) return;
     try {
       final service = ref.read(firestoreServiceProvider);
       final prefs = await service
@@ -51,12 +45,9 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
       if (mounted) {
         setState(() {
           _retentionDays = prefs['retentionDays'] as int? ?? 30;
-          _loadingPrefs = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingPrefs = false);
-    }
+    } catch (_) {}
   }
 
   Future<List<SensorReading>> _fetchReadings() async {
@@ -179,7 +170,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         readings.map((r) => r.ph).reduce((a, b) => a + b) / readings.length;
     double avgTds =
         readings.map((r) => r.tds).reduce((a, b) => a + b) / readings.length;
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
       headers: ['Metric', 'Average', 'Min', 'Max'],
       data: [
         [
@@ -223,7 +214,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   pw.Widget _dataTable(List<SensorReading> readings) {
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
       headers: ['Time', 'Turb', 'pH', 'TDS', 'Level%', 'Vol(L)'],
       data: readings
           .map((r) => [
@@ -241,7 +232,6 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   Future<void> _savePrefs() async {
-    setState(() => _savingPrefs = true);
     try {
       final user = ref.read(currentUserProvider);
       if (user == null) return;
@@ -252,8 +242,6 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
       if (mounted) _snack('Preferences saved.');
     } catch (e) {
       if (mounted) _snack('Save failed: $e');
-    } finally {
-      if (mounted) setState(() => _savingPrefs = false);
     }
   }
 
@@ -483,92 +471,6 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
     );
   }
 
-  Widget _buildCard({
-    required IconData iconData,
-    required String title,
-    required String subtitle,
-    required Widget trailing,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(iconData, size: 20, color: const Color(0xFF314158)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 16,
-                    color: Color(0xFF314158),
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 14,
-                    color: Color(0xFF62748E),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          trailing,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToggle({
-    required bool value,
-    required ValueChanged<bool>? onChanged,
-  }) {
-    return GestureDetector(
-      onTap: onChanged == null ? null : () => onChanged(!value),
-      child: Container(
-        width: 32,
-        height: 18,
-        decoration: BoxDecoration(
-          color:
-              value ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 150),
-          alignment:
-              value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.all(2),
-            width: 14,
-            height: 14,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildRetentionCard() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -774,15 +676,12 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   Future<void> _clearAllData() async {
-    setState(() => _savingPrefs = true);
     try {
       final service = ref.read(firestoreServiceProvider);
       await service.deleteAllReadings(_deviceId);
       if (mounted) _snack('All sensor data cleared.');
     } catch (e) {
       if (mounted) _snack('Failed to clear data: $e');
-    } finally {
-      if (mounted) setState(() => _savingPrefs = false);
     }
   }
 }

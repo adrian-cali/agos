@@ -4,7 +4,6 @@ import '../../presentation/screens/welcome/welcome_screen.dart';
 import '../../presentation/screens/auth/login_screen.dart';
 import '../../presentation/screens/auth/register_screen.dart';
 import '../../presentation/screens/auth/forgot_password_screen.dart';
-import '../../presentation/screens/connection/connection_method_screen.dart';
 import '../../presentation/screens/connection/device_setup_intro_screen.dart';
 import '../../presentation/screens/connection/wifi_setup_screen.dart';
 import '../../presentation/screens/connection/bluetooth_setup1_screen.dart';

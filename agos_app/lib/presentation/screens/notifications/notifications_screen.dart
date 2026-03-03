@@ -39,9 +39,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
     final wsAlerts = ref.watch(alertsProvider);
 
     // Historical alerts derived from Firestore sensor readings
-    final deviceId =
-        ref.watch(linkedDeviceIdProvider).valueOrNull ?? 'agos-zksl9QK3';
-    final fsAlertsAsync = ref.watch(firestoreAlertsProvider(deviceId));
+    final deviceIdAsync = ref.watch(linkedDeviceIdProvider);
+    final deviceId = deviceIdAsync.valueOrNull ?? '';
+    final fsAlertsAsync = deviceId.isEmpty
+        ? const AsyncValue<List<AlertItem>>.data([])
+        : ref.watch(firestoreAlertsProvider(deviceId));
     final fsAlerts = fsAlertsAsync.valueOrNull ?? [];
 
     // Merge: deduplicate by id, WS alerts take precedence (they're live)

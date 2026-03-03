@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -51,14 +52,28 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void _navigateBasedOnAuth() async {
-    final user = FirebaseAuth.instance.currentUser;
+    User? user;
+    if (kIsWeb) {
+      // On web, currentUser can be null while Firebase restores the session.
+      // Wait up to 5s for the first authStateChanges event before giving up.
+      try {
+        user = await FirebaseAuth.instance
+            .authStateChanges()
+            .first
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        user = FirebaseAuth.instance.currentUser;
+      }
+    } else {
+      user = FirebaseAuth.instance.currentUser;
+    }
+
     if (user == null) {
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
       return;
     }
     // Check if the user has already set up a device
-    final hasDevice =
-        await FirestoreService().hasLinkedDevice(user.uid);
+    final hasDevice = await FirestoreService().hasLinkedDevice(user.uid);
     if (!mounted) return;
     Navigator.pushReplacementNamed(
       context,
