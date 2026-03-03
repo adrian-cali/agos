@@ -159,7 +159,9 @@ class _NotificationModalState extends ConsumerState<_NotificationModal>
 
     final seen = <String>{};
     final merged = <_NotificationData>[];
-    for (final a in [...wsAlerts, ...fsAlerts]) {
+    // Exclude threshold_exceeded from WS alerts — those are handled by Firestore
+    // firestoreAlertsProvider to avoid showing duplicates from both sources.
+    for (final a in [...wsAlerts.where((a) => a.type != 'threshold_exceeded'), ...fsAlerts]) {
       if (seen.contains(a.id)) continue;
       seen.add(a.id);
       final nd = _NotificationData.fromAlert(a)

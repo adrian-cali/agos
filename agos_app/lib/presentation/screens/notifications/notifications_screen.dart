@@ -47,9 +47,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
     final fsAlerts = fsAlertsAsync.valueOrNull ?? [];
 
     // Merge: deduplicate by id, WS alerts take precedence (they're live)
-    final wsIds = wsAlerts.map((a) => a.id).toSet();
+    // Exclude threshold_exceeded WS alerts — handled by Firestore firestoreAlertsProvider.
+    final wsIds = wsAlerts
+        .where((a) => a.type != 'threshold_exceeded')
+        .map((a) => a.id)
+        .toSet();
     final List<AlertItem> combined = [
-      ...wsAlerts,
+      ...wsAlerts.where((a) => a.type != 'threshold_exceeded'),
       ...fsAlerts.where((a) => !wsIds.contains(a.id)),
     ];
     // Sort newest-first

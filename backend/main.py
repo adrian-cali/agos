@@ -323,34 +323,9 @@ async def handle_sensor_data(data: dict):
         "optimal" if tds <= thresholds["tds_max"] else "warning"
     )
 
-    # Threshold alerts
-    alert_messages = []
-    turb_min = thresholds.get("turbidity_min", 0.0)
-    if not (turb_min <= turb <= thresholds["turbidity_max"]):
-        alert_messages.append(f"Turbidity {round(turb)} NTU out of range {round(turb_min)}–{round(thresholds['turbidity_max'])} NTU")
-    if not (thresholds["ph_min"] <= ph <= thresholds["ph_max"]):
-        alert_messages.append(f"pH {ph:.1f} out of range {thresholds['ph_min']:.1f}–{thresholds['ph_max']:.1f}")
-    if tds > thresholds["tds_max"]:
-        alert_messages.append(f"TDS {round(tds)} ppm exceeds threshold {round(thresholds['tds_max'])} ppm")
-    if level < 20:
-        alert_messages.append(f"Water level critically low: {level:.1f}%")
-
-    for msg in alert_messages:
-        alert = {
-            "id": f"thresh_{int(time.time()*1000)}_{len(state['alerts'])}",
-            "type": "threshold_exceeded",
-            "title": "Water Quality Alert",
-            "description": msg,
-            "timestamp": datetime.now().isoformat(),
-            "is_read": False,
-            "severity": "warning"
-        }
-        state["alerts"].append(alert)
-        await manager.broadcast_to_apps({
-            "type": "system_alert",
-            "timestamp": datetime.now().isoformat(),
-            "alert": alert
-        })
+    # Threshold checks are handled client-side from Firestore readings
+    # (firestoreAlertsProvider in firestore_service.dart) — no server-side
+    # threshold alerts needed to avoid duplicates in the notification modal.
 
     # Firestore write (throttled — at most once every FIRESTORE_WRITE_INTERVAL_S seconds)
     if FIREBASE_ENABLED and db is not None and _should_write_firestore(device_id):
