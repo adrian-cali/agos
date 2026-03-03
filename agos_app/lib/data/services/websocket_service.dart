@@ -606,11 +606,22 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
     });
   };
 
-  // When the WS itself disconnects, immediately mark as not live.
+  // When the WS itself disconnects, do NOT immediately mark as offline.
+  // The stale timer (15 s, reset on every sensor message) will mark offline
+  // when sensor data stops. This prevents a "Live → Idle" flicker when the
+  // user refreshes or briefly closes the app while the ESP32 keeps streaming.
   service.onConnectionChanged = (connected) {
     if (!connected) {
-      staleTimer?.cancel();
-      markOffline(ref);
+      // Don't cancel the stale timer — let it fire naturally if sensor data stops.
+      // Only start a fallback timer if there is no active stale timer already.
+      // (If the stale timer is already running, the ESP32 is still streaming and
+      // we will stay Live until 15 s of silence.)
+      if (staleTimer == null || !(staleTimer!.isActive)) {
+        // No recent sensor data — start a short grace period before going Idle.
+        staleTimer = Timer(const Duration(seconds: 15), () {
+          markOffline(ref);
+        });
+      }
     } else {
       // Push saved thresholds immediately on each reconnect.
       final thresholds = ref.read(userThresholdsProvider).valueOrNull;
