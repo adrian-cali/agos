@@ -16,17 +16,31 @@ logger = logging.getLogger(__name__)
 # ============= FIREBASE INIT =============
 
 _SERVICE_ACCOUNT_PATH = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
+_SERVICE_ACCOUNT_JSON_ENV = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
 
-if os.path.exists(_SERVICE_ACCOUNT_PATH):
-    cred = credentials.Certificate(_SERVICE_ACCOUNT_PATH)
-    firebase_admin.initialize_app(cred)
+def _init_firebase():
+    """Initialize Firebase from file (local) or environment variable (deployed)."""
+    import json as _json
+    if os.path.exists(_SERVICE_ACCOUNT_PATH):
+        return credentials.Certificate(_SERVICE_ACCOUNT_PATH)
+    if _SERVICE_ACCOUNT_JSON_ENV:
+        try:
+            cert_dict = _json.loads(_SERVICE_ACCOUNT_JSON_ENV)
+            return credentials.Certificate(cert_dict)
+        except Exception as e:
+            logger.error(f"Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON: {e}")
+    return None
+
+_cred = _init_firebase()
+if _cred:
+    firebase_admin.initialize_app(_cred)
     db = firestore.client()
     FIREBASE_ENABLED = True
     logger.info("Firebase Admin SDK initialized.")
 else:
     db = None
     FIREBASE_ENABLED = False
-    logger.warning("serviceAccountKey.json not found — running without Firebase persistence.")
+    logger.warning("serviceAccountKey.json not found and FIREBASE_SERVICE_ACCOUNT_JSON not set — running without Firebase persistence.")
 
 app = FastAPI(title="AGOS WebSocket Server", version="1.0.0")
 
