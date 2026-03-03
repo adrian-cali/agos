@@ -1,0 +1,51 @@
+# ─── Secrets / credentials ───────────────────────────────────────────────────
+*.json.key
+*firebase-adminsdk*.json
+agos-prod-firebase-adminsdk-*.json
+backend/serviceAccountKey.json
+.env
+*.env
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ─── Flutter / Dart build artifacts ──────────────────────────────────────────
+agos_app/build/
+agos_app/.dart_tool/
+agos_app/.flutter-plugins
+agos_app/.flutter-plugins-dependencies
+agos_app/.dart_tool/
+agos_app/.packages
+agos_app/agos_app.iml
+agos_app/.idea/
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.last_build_id
+
+# ─── Web build output (leftover from gh-pages operations at root) ─────────────
+/canvaskit/
+/icons/
+/splash/
+/assets/
+/index.html
+/main.dart.js
+/main.dart.js.map
+/flutter.js
+/flutter_bootstrap.js
+/flutter_service_worker.js
+/manifest.json
+/version.json
+/favicon.png
+/*.dart.js*
+/flutter_assets/
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
