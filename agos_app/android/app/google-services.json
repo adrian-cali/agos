@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "804926916850",
+    "project_id": "agos-prod",
+    "storage_bucket": "agos-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:804926916850:android:da7420fc9a612d67c8286b",
+        "android_client_info": {
+          "package_name": "com.agos.agos_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "804926916850-3siviqkdj65c4tenkgvsl8brss535h76.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.agos.agos_app",
+            "certificate_hash": "d80450c62b0e42994db6ebc67836de993b5144b6"
+          }
+        },
+        {
+          "client_id": "804926916850-g59la9j4egla7la9nd160d7g7o0j2pop.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEGzg2FPnaOIAu6JjukO45A-VQ3UDb6FM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "804926916850-g59la9j4egla7la9nd160d7g7o0j2pop.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "804926916850-fqpk4r20vsfq5kfmtshud673an054fk3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.agos.agosApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
