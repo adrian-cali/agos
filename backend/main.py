@@ -250,6 +250,22 @@ class ConnectionManager:
             "connected": still_connected,
             "last_seen": state["sensor_last_seen"],
         })
+        if not still_connected:
+            alert = {
+                "id": f"alert_{int(time.time()*1000)}_{len(state['alerts'])}",
+                "type": "sensor_offline",
+                "title": "ESP32 Sensor Offline",
+                "description": "The water monitoring sensor has disconnected.",
+                "timestamp": now,
+                "is_read": False,
+                "severity": "critical",
+            }
+            state["alerts"].append(alert)
+            await self.broadcast_to_apps({
+                "type": "system_alert",
+                "timestamp": now,
+                "alert": alert,
+            })
 
     def disconnect_app(self, websocket: WebSocket):
         self.app_connections.discard(websocket)
@@ -716,7 +732,9 @@ async def websocket_sensor(websocket: WebSocket):
                     "type": "heartbeat_ack",
                     "timestamp": datetime.now().isoformat()
                 })
-    except WebSocketDisconnect:
+    except Exception:
+        pass
+    finally:
         await manager.disconnect_sensor(websocket)
 
 
@@ -751,7 +769,9 @@ async def websocket_app(websocket: WebSocket):
                     "type": "heartbeat_ack",
                     "timestamp": datetime.now().isoformat()
                 })
-    except WebSocketDisconnect:
+    except Exception:
+        pass
+    finally:
         manager.disconnect_app(websocket)
 
 
