@@ -95,15 +95,95 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white)),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _dismissedIds.addAll(combined.map((a) => a.id));
-                          });
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.white),
+                        color: const Color(0xFF1447E6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        onSelected: (value) {
+                          if (value == 'mark_read') {
+                            setState(() {
+                              _dismissedIds.addAll(combined.map((a) => a.id));
+                            });
+                          } else if (value == 'clear_all') {
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                title: const Text('Clear All Notifications',
+                                    style: TextStyle(
+                                        fontFamily: 'Poppins',
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 16)),
+                                content: const Text(
+                                    'This will permanently delete all notifications. This cannot be undone.',
+                                    style: TextStyle(
+                                        fontFamily: 'Inter', fontSize: 14)),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text('Cancel',
+                                        style: TextStyle(
+                                            color: Color(0xFF62748E))),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      final wsService =
+                                          ref.read(webSocketServiceProvider);
+                                      for (final a in combined) {
+                                        wsService.deleteAlert(a.id);
+                                      }
+                                      setState(() {
+                                        _dismissedIds.addAll(
+                                            combined.map((a) => a.id));
+                                      });
+                                    },
+                                    child: const Text('Clear All',
+                                        style: TextStyle(
+                                            color: Color(0xFFEF4444),
+                                            fontWeight: FontWeight.w600)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
                         },
-                        child: const Text('Mark All Read',
-                            style: TextStyle(
-                                fontSize: 13, color: Colors.white70)),
+                        itemBuilder: (context) => [
+                          const PopupMenuItem<String>(
+                            value: 'mark_read',
+                            child: Row(
+                              children: [
+                                Icon(Icons.done_all,
+                                    size: 18, color: Colors.white70),
+                                SizedBox(width: 10),
+                                Text('Mark all as read',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontFamily: 'Inter',
+                                        fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem<String>(
+                            value: 'clear_all',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_sweep_outlined,
+                                    size: 18, color: Color(0xFFFF8A8A)),
+                                SizedBox(width: 10),
+                                Text('Clear all',
+                                    style: TextStyle(
+                                        color: Color(0xFFFF8A8A),
+                                        fontFamily: 'Inter',
+                                        fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

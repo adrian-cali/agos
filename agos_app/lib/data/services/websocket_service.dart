@@ -589,11 +589,16 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
         final sensorConnected = data['sensor_connected'] as bool? ?? false;
         ref.read(wsConnectedProvider.notifier).state = sensorConnected;
 
-        final lastSeenRaw = data['sensor_last_seen'] as String?;
-        if (lastSeenRaw != null) {
-          try {
-            ref.read(wsLastDataProvider.notifier).update(DateTime.parse(lastSeenRaw));
-          } catch (_) {}
+        // Only restore last-seen timestamp when sensor is actually connected;
+        // the stale value from a previous session would show a confusing
+        // "Updated 8h ago" when the device is offline.
+        if (sensorConnected) {
+          final lastSeenRaw = data['sensor_last_seen'] as String?;
+          if (lastSeenRaw != null) {
+            try {
+              ref.read(wsLastDataProvider.notifier).update(DateTime.parse(lastSeenRaw));
+            } catch (_) {}
+          }
         }
         break;
 
@@ -602,7 +607,15 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
         final connected = data['connected'] as bool? ?? false;
         ref.read(wsConnectedProvider.notifier).state = connected;
 
-        if (connected) {
+        // Always update the last-seen timestamp so "Updated X ago" stays accurate.
+        final sensorLastSeenRaw = data['last_seen'] as String?;
+        if (sensorLastSeenRaw != null) {
+          try {
+            ref.read(wsLastDataProvider.notifier).update(DateTime.parse(sensorLastSeenRaw));
+          } catch (_) {
+            ref.read(wsLastDataProvider.notifier).update(DateTime.now());
+          }
+        } else {
           ref.read(wsLastDataProvider.notifier).update(DateTime.now());
         }
         break;
@@ -740,12 +753,8 @@ final alertsProvider =
       notifier.setAlerts(merged);
       // Cache server alerts so they survive hot restarts
       ref.read(cachedAlertsProvider.notifier).addOrUpdateAll(serverAlerts);
-      // Notify for warning/critical threshold alerts
-      for (final a in serverAlerts) {
-        if (a.type == 'water_quality' || a.severity == 'critical' || a.severity == 'warning') {
-          maybeNotify(a);
-        }
-      }
+      // Do NOT call maybeNotify here — state_snapshot is a historical sync,
+      // not a real-time event. Notifications fire only for live system_alert messages.
     } else if (type == 'system_alert') {
       final alert = AlertItem.fromJson(data['alert'] ?? {});
       notifier.addAlert(alert);
@@ -769,11 +778,7 @@ final alertsProvider =
       notifier.setAlerts(merged);
       // Cache
       ref.read(cachedAlertsProvider.notifier).addOrUpdateAll(serverAlerts);
-      for (final a in serverAlerts) {
-        if (a.type == 'water_quality' || a.severity == 'critical' || a.severity == 'warning') {
-          maybeNotify(a);
-        }
-      }
+      // alerts_updated is a list sync (triggered by delete), not a new event—skip notification.
     }
   });
 
@@ -1006,29 +1011,18 @@ final liveChartPointsProvider =
     }).catchError((_) {/* silently ignore seed errors */});
   }, fireImmediately: true);
 
-  // Listen for real-time quality_update messages from the WebSocket.
-  final ws = ref.watch(webSocketServiceProvider);
-  ws.addListener((data) {
-    if (data['type'] == 'quality_update') {
-      final qualityData = data['data'] as Map<String, dynamic>?;
-      if (qualityData == null) return;
-
-      final turb = (qualityData['turbidity']?['value'] ?? 0.0).toDouble();
-      final ph = (qualityData['ph']?['value'] ?? 0.0).toDouble();
-      final tds = (qualityData['tds']?['value'] ?? 0.0).toDouble();
-
-      final tsStr = data['timestamp'] as String?;
-      final ts = tsStr != null
-          ? (DateTime.tryParse(tsStr) ?? DateTime.now()).toLocal()
-          : DateTime.now();
-
-      notifier.addPoint(LiveChartPoint(
-        timestamp: ts,
-        turbidity: turb,
-        ph: ph,
-        tds: tds,
-      ));
-    }
+  // Append new points whenever waterQualityProvider updates.
+  // waterQualityProvider is already receiving quality_update WS events correctly,
+  // so piggybacking on it is more reliable than a separate ws.addListener.
+  ref.listen<WaterQuality>(waterQualityProvider, (prev, next) {
+    // Skip no-data readings (all zeros = not yet populated)
+    if (next.turbidity.value == 0 && next.ph.value == 0 && next.tds.value == 0) return;
+    notifier.addPoint(LiveChartPoint(
+      timestamp: DateTime.now(),
+      turbidity: next.turbidity.value,
+      ph: next.ph.value,
+      tds: next.tds.value,
+    ));
   });
 
   return notifier;

@@ -225,12 +225,15 @@ class ConnectionManager:
         logger.info(f"App connected. Total: {len(self.app_connections)}")
 
         # Send state snapshot (includes current pump state and sensor connectivity)
+        # Only include alerts from the last 24 h to avoid stale entries from old sessions
+        cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+        recent_alerts = [a for a in state["alerts"] if a.get("timestamp", "") >= cutoff]
         await websocket.send_json({
             "type": "state_snapshot",
             "timestamp": datetime.now().isoformat(),
             "tank_data": state["tank_data"],
             "water_quality": state["water_quality"],
-            "alerts": state["alerts"],
+            "alerts": recent_alerts,
             "devices": state["devices"],
             "pump": state["pump"],
             "sensor_connected": state["sensor_connected"],
@@ -242,30 +245,15 @@ class ConnectionManager:
         still_connected = len(self.sensor_connections) > 0
         now = datetime.now().isoformat()
         state["sensor_connected"] = still_connected
-        if still_connected:
-            state["sensor_last_seen"] = now
+        state["sensor_last_seen"] = now  # always stamp the last-seen time
         logger.info(f"Sensor disconnected. Total: {len(self.sensor_connections)}")
         await self.broadcast_to_apps({
             "type": "sensor_status",
             "connected": still_connected,
             "last_seen": state["sensor_last_seen"],
         })
-        if not still_connected:
-            alert = {
-                "id": f"alert_{int(time.time()*1000)}_{len(state['alerts'])}",
-                "type": "sensor_offline",
-                "title": "ESP32 Sensor Offline",
-                "description": "The water monitoring sensor has disconnected.",
-                "timestamp": now,
-                "is_read": False,
-                "severity": "critical",
-            }
-            state["alerts"].append(alert)
-            await self.broadcast_to_apps({
-                "type": "system_alert",
-                "timestamp": now,
-                "alert": alert,
-            })
+        # The Flutter client generates a disconnect alert locally when it
+        # receives sensor_status(connected=false), so no server-side alert needed.
 
     def disconnect_app(self, websocket: WebSocket):
         self.app_connections.discard(websocket)

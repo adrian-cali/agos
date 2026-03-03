@@ -1049,8 +1049,12 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   bool _hasLiveData = false;
   String? _dataError;
 
-  /// Returns live Firestore spots. Sets _hasLiveData and _dataError as side effects.
-  List<FlSpot> _buildSpots(AsyncValue<List<SensorReading>> historyAsync) {
+  /// Build spots merging Firestore history with live WebSocket points not yet in Firestore.
+  /// Used for 24H/7D/30D views so the chart updates immediately on new WS data.
+  List<FlSpot> _buildMergedSpots(
+    AsyncValue<List<SensorReading>> historyAsync,
+    List<LiveChartPoint> livePoints,
+  ) {
     if (historyAsync.hasError) {
       _timestampMap.clear();
       _hasLiveData = false;
@@ -1058,16 +1062,22 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       return [];
     }
     _dataError = null;
-    final readings = historyAsync.valueOrNull ?? [];
-    if (readings.isEmpty) {
-      _timestampMap.clear();
-      _hasLiveData = false;
-      return []; // return empty — chart will show empty state
-    }
-    _hasLiveData = true;
+
+    final firestoreReadings = historyAsync.valueOrNull ?? [];
+
+    // The latest timestamp in the Firestore data (so we only append newer live points)
+    DateTime? latestFirestoreTs = firestoreReadings.isEmpty
+        ? null
+        : firestoreReadings
+            .map((r) => r.timestamp)
+            .reduce((a, b) => a.isAfter(b) ? a : b);
+
+    final cutoff = DateTime.now().subtract(Duration(hours: _periodHours));
+
     _timestampMap.clear();
     final List<FlSpot> result = [];
-    for (final r in readings) {
+
+    for (final r in firestoreReadings) {
       final dt = r.timestamp;
       final double x = _toX(dt);
       final double value = switch (_firestoreField) {
@@ -1075,11 +1085,30 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
         'ph' => r.ph,
         _ => r.tds,
       };
-      final xInt = x.round();
-      _timestampMap[xInt] = dt;
+      _timestampMap[x.round()] = dt;
       result.add(FlSpot(x, value));
     }
-    result.sort((a, b) => a.x.compareTo(b.x)); // oldest first (left edge)
+
+    // Append live WS points within the window that are newer than the latest Firestore reading
+    for (final p in livePoints) {
+      if (p.timestamp.isBefore(cutoff)) continue;
+      if (latestFirestoreTs != null && !p.timestamp.isAfter(latestFirestoreTs)) continue;
+      final double x = _toX(p.timestamp);
+      final double value = switch (_firestoreField) {
+        'turbidity' => p.turbidity,
+        'ph' => p.ph,
+        _ => p.tds,
+      };
+      _timestampMap[x.round()] = p.timestamp;
+      result.add(FlSpot(x, value));
+    }
+
+    if (result.isEmpty) {
+      _hasLiveData = false;
+      return [];
+    }
+    _hasLiveData = true;
+    result.sort((a, b) => a.x.compareTo(b.x));
     return result;
   }
 
@@ -1246,7 +1275,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           const SizedBox(height: 16),
           Builder(builder: (_) {
             // 1H → use live rolling WebSocket buffer (real-time waveform, no cutoff lag)
-            // 24H/7D/30D → use Firestore history stream
+            // 24H/7D/30D → Firestore history + live WS points merged for real-time updates
             final List<FlSpot> spots;
             if (_selectedPeriod == TimePeriod.oneHour) {
               final livePoints = ref.watch(liveChartPointsProvider);
@@ -1256,6 +1285,9 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
               final historyAsync = ref.watch(
                 readingHistoryProvider((_deviceId, _periodHours, _refreshTick)),
               );
+              // Watch live WS buffer — triggers rebuild immediately on new sensor data,
+              // and any points not yet in Firestore are merged into the chart.
+              final livePoints = ref.watch(liveChartPointsProvider);
               if (historyAsync.isLoading) {
                 return const SizedBox(
                   height: 200,
@@ -1264,7 +1296,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                   ),
                 );
               }
-              spots = _buildSpots(historyAsync);
+              spots = _buildMergedSpots(historyAsync, livePoints);
             }
             if (_dataError != null) {
               return SizedBox(

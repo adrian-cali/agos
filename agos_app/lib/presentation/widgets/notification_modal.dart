@@ -251,17 +251,52 @@ class _NotificationModalState extends ConsumerState<_NotificationModal>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 16),
-                            child: Text(
-                              'NOTIFICATIONS',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'Poppins',
-                                letterSpacing: 0.5,
-                              ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'NOTIFICATIONS',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Poppins',
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                if (visible.isNotEmpty)
+                                  GestureDetector(
+                                    onTap: () => ref
+                                        .read(dismissedAlertsProvider.notifier)
+                                        .dismissAll(visible.map((n) => n.id)),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.12),
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.3),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Clear all',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                          fontFamily: 'Inter',
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                           ...visible.asMap().entries.map((entry) {
