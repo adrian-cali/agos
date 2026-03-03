@@ -16,3 +16,7 @@ python-dotenv>=1.0.0
 
 # Firebase Admin SDK
 firebase-admin>=6.4.0
+
+# Redis client (optional — used for state caching when REDIS_URL env var is set)
+# Falls back gracefully if not installed or REDIS_URL is not configured.
+redis>=5.0.0

@@ -7,6 +7,7 @@ import random
 import logging
 import os
 import time
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -43,6 +44,86 @@ else:
     logger.warning("serviceAccountKey.json not found and FIREBASE_SERVICE_ACCOUNT_JSON not set — running without Firebase persistence.")
 
 app = FastAPI(title="AGOS WebSocket Server", version="1.0.0")
+
+# ============= REDIS CACHE (optional) =============
+# If REDIS_URL is set (Railway Redis add-on), state snapshots are persisted
+# every REDIS_SNAPSHOT_INTERVAL_S seconds so restarts restore previous values.
+# If Redis is unavailable or unconfigured, the app runs identically without it.
+
+_redis_client = None
+_REDIS_STATE_KEY = "agos:state_snapshot"
+_REDIS_HIST_KEY  = "agos:historical_data"
+REDIS_SNAPSHOT_INTERVAL_S = 30   # save state to Redis every 30 s
+
+def _init_redis():
+    """Try to connect to Redis. Returns a redis.Redis client or None."""
+    redis_url = os.environ.get("REDIS_URL")
+    if not redis_url:
+        return None
+    try:
+        import redis as _redis
+        client = _redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=3)
+        client.ping()  # verify connection
+        logger.info("Redis connected.")
+        return client
+    except Exception as e:
+        logger.warning(f"Redis unavailable — running without cache: {e}")
+        return None
+
+_redis_client = _init_redis()
+
+
+def _state_to_json(s: dict, h: dict) -> str:
+    """Serialise state + historical_data to a JSON string (convert datetimes)."""
+    def _default(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+    return json.dumps({"state": s, "historical_data": h}, default=_default)
+
+
+def _restore_from_redis():
+    """Load state + historical_data from Redis if available. Mutates globals in place."""
+    if _redis_client is None:
+        return
+    try:
+        raw = _redis_client.get(_REDIS_STATE_KEY)
+        if not raw:
+            return
+        payload = json.loads(raw)
+        # Restore state fields that are safe to overwrite from cache
+        cached_state = payload.get("state", {})
+        cached_hist  = payload.get("historical_data", {})
+
+        # Only restore non-connectivity fields — don't restore sensor_connected
+        # because the sensor isn't connected at startup
+        for key in ("tank_data", "water_quality", "alerts", "devices", "pump", "settings"):
+            if key in cached_state:
+                state[key] = cached_state[key]
+        # Never restore sensor_connected / sensor_last_seen from cache
+        # (those are set when the ESP32 actually connects)
+
+        # Restore historical data
+        for metric in ("turbidity", "ph", "tds"):
+            if metric in cached_hist and cached_hist[metric]:
+                historical_data[metric] = cached_hist[metric]
+
+        logger.info("State restored from Redis cache.")
+    except Exception as e:
+        logger.warning(f"Failed to restore state from Redis: {e}")
+
+
+async def _redis_snapshot_loop():
+    """Background task: persist state to Redis every REDIS_SNAPSHOT_INTERVAL_S seconds."""
+    if _redis_client is None:
+        return
+    while True:
+        await asyncio.sleep(REDIS_SNAPSHOT_INTERVAL_S)
+        try:
+            payload = _state_to_json(state, historical_data)
+            _redis_client.set(_REDIS_STATE_KEY, payload, ex=86400 * 2)  # expire after 2 days
+        except Exception as e:
+            logger.warning(f"Redis snapshot failed: {e}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -146,8 +227,10 @@ def generate_historical_data():
             })
 
 
-# Generate historical data on startup
+# Generate historical data on startup, then attempt to overwrite with Redis cache.
+# If Redis has a recent snapshot the mock data is replaced with real persisted values.
 generate_historical_data()
+_restore_from_redis()
 
 # ============= FIRESTORE WRITE THROTTLE =============
 # Free-tier quota: 20,000 writes/day.
@@ -576,6 +659,12 @@ async def handle_pump_command(data: dict):
 
 
 # ============= HTTP ENDPOINTS =============
+
+@app.on_event("startup")
+async def _on_startup():
+    """Start background tasks when the ASGI server starts."""
+    asyncio.create_task(_redis_snapshot_loop())
+
 
 @app.get("/")
 async def root():

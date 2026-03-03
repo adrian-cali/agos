@@ -38,6 +38,15 @@ class TankData {
       timestamp: json['timestamp'] ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'level': level,
+    'volume': volume,
+    'capacity': capacity,
+    'flow_rate': flowRate,
+    'status': status,
+    'timestamp': timestamp,
+  };
 }
 
 class WaterQualityMetric {
@@ -61,6 +70,13 @@ class WaterQualityMetric {
       target: json['target'] ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'value': value,
+    'unit': unit,
+    'status': status,
+    'target': target,
+  };
 }
 
 class WaterQuality {
@@ -87,6 +103,13 @@ class WaterQuality {
       temperature: WaterQualityMetric.fromJson(json['temperature'] ?? {}),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'turbidity': turbidity.toJson(),
+    'ph': ph.toJson(),
+    'tds': tds.toJson(),
+    'temperature': temperature.toJson(),
+  };
 }
 
 class AlertItem {
@@ -665,15 +688,39 @@ final tankDataProvider = StateNotifierProvider<TankDataNotifier, TankData>((ref)
 });
 
 class TankDataNotifier extends StateNotifier<TankData> {
+  static const _key = 'cached_tank_data';
+
   TankDataNotifier() : super(TankData(
-    level: 67,
-    volume: 33500,
+    level: 0,
+    volume: 0,
     capacity: 50000,
-    flowRate: 2.4,
-    status: 'optimal',
+    flowRate: 0,
+    status: 'unknown',
     timestamp: '',
-  ));
-  void update(TankData data) => state = data;
+  )) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw != null && mounted) {
+        final json = jsonDecode(raw) as Map<String, dynamic>;
+        state = TankData.fromJson(json);
+      }
+    } catch (_) {}
+  }
+
+  void update(TankData data) {
+    if (!mounted) return;
+    state = data;
+    SharedPreferences.getInstance().then((prefs) {
+      try {
+        prefs.setString(_key, jsonEncode(data.toJson()));
+      } catch (_) {}
+    });
+  }
 }
 
 final waterQualityProvider =
@@ -692,8 +739,32 @@ final waterQualityProvider =
 });
 
 class WaterQualityNotifier extends StateNotifier<WaterQuality> {
-  WaterQualityNotifier() : super(WaterQuality());
-  void update(WaterQuality data) => state = data;
+  static const _key = 'cached_water_quality';
+
+  WaterQualityNotifier() : super(WaterQuality()) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw != null && mounted) {
+        final json = jsonDecode(raw) as Map<String, dynamic>;
+        state = WaterQuality.fromJson(json);
+      }
+    } catch (_) {}
+  }
+
+  void update(WaterQuality data) {
+    if (!mounted) return;
+    state = data;
+    SharedPreferences.getInstance().then((prefs) {
+      try {
+        prefs.setString(_key, jsonEncode(data.toJson()));
+      } catch (_) {}
+    });
+  }
 }
 
 final alertsProvider =
