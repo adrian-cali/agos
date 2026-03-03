@@ -1,6 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../data/services/ble_provisioning_service.dart';
 
 /// Ready to Scan Screen for Bluetooth (Figma 335:831 & 335:871)
 /// Shows two states: ready to scan (335:831) and scanning with devices (335:871)
@@ -11,30 +11,19 @@ class ReadyToScanBluetoothScreen extends StatefulWidget {
   State<ReadyToScanBluetoothScreen> createState() => _ReadyToScanBluetoothScreenState();
 }
 
-class BluetoothDevice {
-  final String name;
-  final String signalStrength;
-  
-  const BluetoothDevice(this.name, this.signalStrength);
-}
-
 class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen> 
     with SingleTickerProviderStateMixin {
   bool _isScanning = false;
   bool _showDevices = false;
   bool _isConnecting = false;
-  String? _selectedDevice;
+  AgosBluetoothDevice? _selectedDevice;
   String? _errorMessage;
   late AnimationController _pulseController;
-  
-  // List of available Bluetooth devices
-  final List<BluetoothDevice> _devices = const [
-    BluetoothDevice('AGOS-Device-A1B2', 'Strong'),
-    BluetoothDevice('Smart Speaker X1', 'Medium'),
-    BluetoothDevice('Wireless Headphones', 'Strong'),
-    BluetoothDevice('Fitness Tracker', 'Weak'),
-    BluetoothDevice('Smart Watch Pro', 'Medium'),
-  ];
+
+  /// Real BLE scan results.
+  List<AgosBluetoothDevice> _devices = const [];
+
+  final _ble = BleProvisioningService();
 
   @override
   void initState() {
@@ -47,58 +36,71 @@ class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen>
 
   @override
   void dispose() {
+    _ble.stopScan();
     _pulseController.dispose();
     super.dispose();
   }
 
-  void _startScanning() {
+  Future<void> _startScanning() async {
     setState(() {
       _isScanning = true;
       _showDevices = false;
       _selectedDevice = null;
       _errorMessage = null;
+      _devices = const [];
     });
     _pulseController.repeat(reverse: true);
 
-    // Simulate device discovery after 2 seconds
-    Timer(const Duration(seconds: 2), () {
+    try {
+      final results = await _ble.scan();
       if (mounted) {
         setState(() {
+          _devices = results;
           _showDevices = true;
           _isScanning = false;
         });
         _pulseController.stop();
+        if (results.isEmpty) {
+          setState(() {
+            _errorMessage = 'No Bluetooth devices found. Make sure the AGOS device is powered on and nearby.';
+          });
+        }
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+          _showDevices = false;
+          _errorMessage = 'Scan failed: ${e.toString()}';
+        });
+        _pulseController.stop();
+      }
+    }
   }
 
-  void _connectDevice() async {
+  Future<void> _connectDevice() async {
     if (_selectedDevice == null) {
-      setState(() {
-        _errorMessage = 'Please select a device first.';
-      });
+      setState(() => _errorMessage = 'Please select a device first.');
       return;
     }
-    
-    // Only allow connection to AGOS-Device-A1B2
-    if (_selectedDevice != 'AGOS-Device-A1B2') {
-      setState(() {
-        _errorMessage = 'Please make sure to select the correct device and try again.';
-      });
-      return;
-    }
-    
-    // Show loading and navigate
+
     setState(() {
       _isConnecting = true;
       _errorMessage = null;
     });
-    
-    // Simulate connection delay
-    await Future.delayed(const Duration(seconds: 2));
-    
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, '/pairing-device');
+
+    try {
+      await _ble.connect(_selectedDevice!);
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/wifi-setup');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
     }
   }
 
@@ -298,88 +300,95 @@ class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen>
                               ),
                               const SizedBox(height: 16),
                               
-                              // Device list
-                              ...List.generate(_devices.length, (index) {
-                                final device = _devices[index];
-                                final isSelected = _selectedDevice == device.name;
-                                final isAGOS = device.name == 'AGOS-Device-A1B2';
+                              // Scrollable device list
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxHeight: 280),
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: _devices.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    final device = _devices[index];
+                                    final isSelected = _selectedDevice?.name == device.name;
+                                    final isAGOS = device.name.startsWith('AGOS');
                                 
-                                return Padding(
-                                  padding: EdgeInsets.only(bottom: index < _devices.length - 1 ? 8 : 0),
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedDevice = device.name;
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                      decoration: BoxDecoration(
-                                        color: isSelected 
-                                          ? const Color(0xFFE0F7FA) 
-                                          : const Color(0xFFF8F9FA),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
+                                    return GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedDevice = device;
+                                          _errorMessage = null;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                        decoration: BoxDecoration(
                                           color: isSelected 
-                                            ? const Color(0xFF00BCD4) 
-                                            : const Color(0xFFE0E0E0),
-                                          width: isSelected ? 2 : 1,
+                                            ? const Color(0xFFE0F7FA) 
+                                            : const Color(0xFFF8F9FA),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: isSelected 
+                                              ? const Color(0xFF00BCD4) 
+                                              : const Color(0xFFE0E0E0),
+                                            width: isSelected ? 2 : 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              isAGOS ? Icons.router : Icons.devices,
+                                              color: isSelected 
+                                                ? const Color(0xFF00B8DB) 
+                                                : const Color(0xFF62748E),
+                                              size: 24,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    device.name,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 14,
+                                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                                      color: const Color(0xFF314158),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    device.isClassic
+                                                        ? 'Classic Bluetooth · ${device.signalLabel}'
+                                                        : 'BLE · Signal: ${device.signalLabel} (${device.rssi} dBm)',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w400,
+                                                      color: const Color(0xFF62748E),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            if (isSelected)
+                                              Container(
+                                                width: 24,
+                                                height: 24,
+                                                decoration: const BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: Color(0xFF00C896),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.check,
+                                                  color: Colors.white,
+                                                  size: 16,
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            isAGOS ? Icons.router : Icons.devices,
-                                            color: isSelected 
-                                              ? const Color(0xFF00B8DB) 
-                                              : const Color(0xFF62748E),
-                                            size: 24,
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  device.name,
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 14,
-                                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                                    color: const Color(0xFF314158),
-                                                  ),
-                                                ),
-                                                Text(
-                                                  'Signal strength: ${device.signalStrength}',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w400,
-                                                    color: const Color(0xFF62748E),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          if (isSelected)
-                                            Container(
-                                              width: 24,
-                                              height: 24,
-                                              decoration: const BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: Color(0xFF00C896),
-                                              ),
-                                              child: const Icon(
-                                                Icons.check,
-                                                color: Colors.white,
-                                                size: 16,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }),
+                                    );
+                                  },
+                                ),
+                              ),
                               const SizedBox(height: 16),
                             ],
                             
@@ -578,7 +587,7 @@ class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: const LinearProgressIndicator(
-                        value: 0.25,
+                        value: 0.43,
                         minHeight: 8,
                         backgroundColor: Color.fromRGBO(15, 23, 42, 0.20),
                         valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),

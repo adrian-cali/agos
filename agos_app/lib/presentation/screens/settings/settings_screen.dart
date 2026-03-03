@@ -1,18 +1,25 @@
-import 'package:agos_app/core/constants/app_colors.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
+import '../../../data/services/firestore_service.dart'
+    show hasUnreadAlertsProvider;
+import '../../../data/services/websocket_service.dart'
+    show pushNotificationsEnabledProvider;
+import '../../../data/services/filter_reminder_service.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen>
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with TickerProviderStateMixin {
-  bool _pushNotifications = true;
   bool _waterLevelAlerts = true;
   late AnimationController _pageController;
 
@@ -55,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
         child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 16),
           child: Column(
             children: [
               // Header section (no animation – always visible)
@@ -62,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               // Settings content
               const SizedBox(height: 19),
               _buildAnimated(0, _buildSettingsContent()),
-              const SizedBox(height: 100), // Bottom padding for navigation
+              const SizedBox(height: 24), // Bottom padding for navigation
             ],
           ),
         ),
@@ -92,13 +100,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(width: 4),
-              Text(
+              const Text(
                 'SETTINGS',
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF141A1E),
+                  color: Color(0xFF141A1E),
                   height: 32 / 20,
                 ),
               ),
@@ -137,6 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     size: 20,
                   ),
                 ),
+                if (ref.watch(hasUnreadAlertsProvider))
                 Positioned(
                   top: 0,
                   right: 0,
@@ -190,8 +199,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               icon: Icons.notifications_outlined,
               title: 'Push Notifications',
               subtitle: 'Receive alerts about water quality',
-              value: _pushNotifications,
-              onChanged: (v) => setState(() => _pushNotifications = v),
+              value: ref.watch(pushNotificationsEnabledProvider),
+              onChanged: (v) => ref.read(pushNotificationsEnabledProvider.notifier).setEnabled(v),
             ),
             _buildDivider(),
             _buildToggleTile(
@@ -201,6 +210,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               value: _waterLevelAlerts,
               onChanged: (v) => setState(() => _waterLevelAlerts = v),
             ),
+            _buildDivider(),
+            _buildFilterReminderTile(),
           ]),
           const SizedBox(height: 24),
           
@@ -276,11 +287,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0x141BA9E1),
+            color: Color(0x141BA9E1),
             blurRadius: 45,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -309,12 +320,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryAccent.withValues(alpha: 0.1),
+                  color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Icon(
                   icon,
-                  color: AppColors.primaryAccent,
+                  color: const Color(0xFF00D3F2),
                   size: 20,
                 ),
               ),
@@ -325,22 +336,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontFamily: 'Poppins',
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: const Color(0xFF141A1E),
+                        color: Color(0xFF141A1E),
                       ),
                     ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
-                          color: const Color(0xFF90A5B4),
+                          color: Color(0xFF90A5B4),
                         ),
                       ),
                     ],
@@ -390,22 +401,22 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 Text(
                   title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFF141A1E),
+                    color: Color(0xFF141A1E),
                   ),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
-                      color: const Color(0xFF90A5B4),
+                      color: Color(0xFF90A5B4),
                     ),
                   ),
                 ],
@@ -449,17 +460,301 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Widget _buildFilterReminderTile() {
+    final settings = ref.watch(filterReminderProvider);
+    final intervalLabel = settings.intervalMonths == 1
+        ? 'Monthly'
+        : 'Every ${settings.intervalMonths} months';
+    final subtitle = settings.enabled
+        ? '$intervalLabel · on the ${settings.dayOfMonth}${_ordinal(settings.dayOfMonth)}'
+        : 'Disabled';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showFilterReminderDialog(),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.filter_alt_outlined,
+                  color: Color(0xFF00D3F2),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filter Cleaning Reminder',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF141A1E),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF90A5B4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  size: 18, color: Color(0xFF90A5B4)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _ordinal(int n) {
+    if (n >= 11 && n <= 13) return 'th';
+    switch (n % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  }
+
+  Future<void> _showFilterReminderDialog() async {
+    final settings = ref.read(filterReminderProvider);
+    int selectedInterval = settings.intervalMonths;
+    int selectedDay = settings.dayOfMonth;
+    bool enabled = settings.enabled;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.filter_alt_outlined,
+                  color: Color(0xFF00D3F2), size: 22),
+              SizedBox(width: 8),
+              Text(
+                'Filter Cleaning Reminder',
+                style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Remind me to clean the filter:',
+                style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    color: Color(0xFF62748E)),
+              ),
+              const SizedBox(height: 12),
+              // Enable toggle
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Enable reminder',
+                      style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 14,
+                          color: Color(0xFF1D293D))),
+                  GestureDetector(
+                    onTap: () => setDlgState(() => enabled = !enabled),
+                    child: Container(
+                      width: 32,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: enabled
+                            ? const Color(0xFF2B7FFF)
+                            : const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: AnimatedAlign(
+                        duration: const Duration(milliseconds: 150),
+                        alignment: enabled
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.all(2),
+                          width: 14,
+                          height: 14,
+                          decoration: const BoxDecoration(
+                              color: Colors.white, shape: BoxShape.circle),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Interval
+              const Text('How often?',
+                  style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1D293D))),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [1, 2, 3, 6].map((months) {
+                  final label =
+                      months == 1 ? 'Monthly' : 'Every $months months';
+                  final selected = selectedInterval == months;
+                  return GestureDetector(
+                    onTap: () =>
+                        setDlgState(() => selectedInterval = months),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF2B7FFF)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(20),
+                        border: selected
+                            ? null
+                            : Border.all(
+                                color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF314158),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              // Day of month
+              const Text('On which day of the month?',
+                  style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1D293D))),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline,
+                        color: Color(0xFF2B7FFF)),
+                    onPressed: () {
+                      if (selectedDay > 1) {
+                        setDlgState(() => selectedDay--);
+                      }
+                    },
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        '$selectedDay${_ordinal(selectedDay)}',
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1D293D),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline,
+                        color: Color(0xFF2B7FFF)),
+                    onPressed: () {
+                      if (selectedDay < 28) {
+                        setDlgState(() => selectedDay++);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Center(
+                child: Text(
+                  'Suggested: 20th — at least once a month',
+                  style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      color: Color(0xFF90A5B4)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel',
+                  style: TextStyle(
+                      fontFamily: 'Inter', color: Color(0xFF62748E))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2B7FFF),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                ref.read(filterReminderProvider.notifier).update(
+                      dayOfMonth: selectedDay,
+                      intervalMonths: selectedInterval,
+                      enabled: enabled,
+                    );
+                Navigator.pop(ctx);
+              },
+              child: const Text('Save',
+                  style: TextStyle(fontFamily: 'Inter')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSignOutButton() {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0x141BA9E1),
+            color: Color(0x141BA9E1),
             blurRadius: 45,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -486,13 +781,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
                 const SizedBox(width: 16),
-                Text(
+                const Text(
                   'Sign Out',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFFE74C3C),
+                    color: Color(0xFFE74C3C),
                   ),
                 ),
               ],
@@ -539,49 +834,59 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
+        title: const Text(
           'Sign Out',
           style: TextStyle(
             fontFamily: 'Poppins',
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF141A1E),
+            color: Color(0xFF141A1E),
           ),
         ),
-        content: Text(
+        content: const Text(
           'Are you sure you want to sign out?',
           style: TextStyle(
             fontFamily: 'Poppins',
             fontSize: 14,
             fontWeight: FontWeight.w400,
-            color: const Color(0xFF90A5B4),
+            color: Color(0xFF90A5B4),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
+            child: const Text(
               'Cancel',
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: const Color(0xFF90A5B4),
+                color: Color(0xFF90A5B4),
               ),
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
+              // GoogleSignIn().signOut() is not supported on web — skip it there
+              if (!kIsWeb) {
+                try {
+                  await GoogleSignIn().signOut();
+                } catch (_) {}
+              }
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(
+                    context, '/login', (r) => false);
+              }
             },
-            child: Text(
+            child: const Text(
               'Sign Out',
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: const Color(0xFFE74C3C),
+                color: Color(0xFFE74C3C),
               ),
             ),
           ),

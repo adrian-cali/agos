@@ -1,22 +1,115 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../data/services/firestore_service.dart';
 
 /// Device Information Screen (Figma 335:994)
 /// Form for entering personal and contact information
-class DeviceInformationScreen extends StatefulWidget {
+class DeviceInformationScreen extends ConsumerStatefulWidget {
   const DeviceInformationScreen({super.key});
 
   @override
-  State<DeviceInformationScreen> createState() => _DeviceInformationScreenState();
+  ConsumerState<DeviceInformationScreen> createState() =>
+      _DeviceInformationScreenState();
 }
 
-class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
+class _DeviceInformationScreenState
+    extends ConsumerState<DeviceInformationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _locationController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillFromAuth();
+  }
+
+  void _prefillFromAuth() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Pre-fill email from Firebase Auth
+    if (_emailController.text.trim().isEmpty && user.email != null) {
+      _emailController.text = user.email!;
+    }
+
+    // Pre-fill name from Firebase Auth displayName
+    final displayName = user.displayName ?? '';
+    if (displayName.isNotEmpty) {
+      final parts = displayName.trim().split(' ');
+      if (_firstNameController.text.trim().isEmpty) {
+        _firstNameController.text = parts.first;
+      }
+      if (_lastNameController.text.trim().isEmpty && parts.length > 1) {
+        _lastNameController.text = parts.sublist(1).join(' ');
+      }
+    }
+
+    // Also load from Firestore (name, phone, location stored from prior setup or profile)
+    _prefillFromFirestore(user.uid);
+  }
+
+  Future<void> _prefillFromFirestore(String uid) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      if (!mounted || doc.data() == null) return;
+      final data = doc.data()!;
+
+      // Name from Firestore (may be more complete than displayName)
+      final firestoreName = (data['name'] as String? ?? '').trim();
+      if (firestoreName.isNotEmpty) {
+        final parts = firestoreName.split(' ');
+        if (_firstNameController.text.trim().isEmpty) {
+          _firstNameController.text = parts.first;
+        }
+        if (_lastNameController.text.trim().isEmpty && parts.length > 1) {
+          _lastNameController.text = parts.sublist(1).join(' ');
+        }
+      }
+
+      // Phone
+      final phone = (data['phone'] as String? ?? '').trim();
+      if (_phoneController.text.trim().isEmpty && phone.isNotEmpty) {
+        _phoneController.text = phone;
+      }
+
+      // Location — check user doc first, then device doc
+      final userLocation = (data['location'] as String? ?? '').trim();
+      if (_locationController.text.trim().isEmpty && userLocation.isNotEmpty) {
+        _locationController.text = userLocation;
+      }
+
+      // Also check device doc for location if not yet filled
+      final deviceId = (data['device_id'] as String? ?? '').trim();
+      if (deviceId.isNotEmpty && _locationController.text.trim().isEmpty) {
+        final deviceDoc = await FirebaseFirestore.instance
+            .collection('devices')
+            .doc(deviceId)
+            .get();
+        if (mounted && deviceDoc.data() != null) {
+          final location =
+              (deviceDoc.data()!['location'] as String? ?? '').trim();
+          if (_locationController.text.trim().isEmpty && location.isNotEmpty) {
+            _locationController.text = location;
+          }
+        }
+      }
+
+      // Trigger rebuild to show pre-filled values
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Silently ignore — form fields stay with whatever was pre-filled from Auth
+    }
+  }
 
   @override
   void dispose() {
@@ -28,9 +121,31 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
     super.dispose();
   }
 
-  void _saveChanges() {
-    if (_formKey.currentState!.validate()) {
+  bool _saving = false;
+
+  Future<void> _saveChanges() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    try {
+      // Pre-fill email from Firebase Auth if the field was left blank
+      final authEmail =
+          FirebaseAuth.instance.currentUser?.email ?? '';
+      final enteredEmail = _emailController.text.trim();
+
+      // Save form data into the shared setup state
+      ref.read(setupStateProvider.notifier).setDeviceInfo(
+            ownerName:
+                '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+                    .trim(),
+            ownerEmail: enteredEmail.isNotEmpty ? enteredEmail : authEmail,
+            ownerPhone: _phoneController.text.trim(),
+            location: _locationController.text.trim(),
+          );
+
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/setup-complete');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -46,9 +161,8 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
   }
 
   String? _validatePhone(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Phone number is required';
-    }
+    // Phone is optional — skip validation if empty
+    if (value == null || value.trim().isEmpty) return null;
     // Accept formats: +63 9XX XXX XXXX, 09XXXXXXXXX, or +639XXXXXXXXX
     final phoneRegex = RegExp(r'^(\+63\s?|0)9\d{2}[\s\-]?\d{3}[\s\-]?\d{4}$');
     if (!phoneRegex.hasMatch(value.trim())) {
@@ -88,7 +202,7 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: const LinearProgressIndicator(
-                        value: 0.75,
+                        value: 0.86,
                         minHeight: 8,
                         backgroundColor: Color.fromRGBO(15, 23, 42, 0.20),
                         valueColor: AlwaysStoppedAnimation<Color>(
@@ -256,16 +370,18 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
                               controller: _phoneController,
                               label: 'Phone Number',
                               icon: Icons.phone_outlined,
-                              hint: 'Enter your phone number',
+                              hint: 'Enter your phone number (optional)',
                               keyboardType: TextInputType.phone,
                               validator: _validatePhone,
+                              isRequired: false,
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
                               controller: _locationController,
                               label: 'Location',
                               icon: Icons.location_on_outlined,
-                              hint: 'Enter your location',
+                              hint: 'Enter your location (optional)',
+                              isRequired: false,
                             ),
                           ],
                         ),
@@ -284,7 +400,7 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: ElevatedButton(
-                            onPressed: _saveChanges,
+                            onPressed: _saving ? null : _saveChanges,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
@@ -292,7 +408,16 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            child: Row(
+                            child: _saving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(Icons.save, size: 16, color: Colors.white,),
@@ -330,9 +455,10 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
     String? hint,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    bool isRequired = true,
   }) {
-    String? _composedValidator(String? value) {
-      if (value == null || value.trim().isEmpty) {
+    String? composedValidator(String? value) {
+      if (isRequired && (value == null || value.trim().isEmpty)) {
         return '$label is required';
       }
       return validator?.call(value);
@@ -359,7 +485,7 @@ class _DeviceInformationScreenState extends State<DeviceInformationScreen> {
         TextFormField(
           controller: controller,
           keyboardType: keyboardType,
-          validator: _composedValidator,
+          validator: composedValidator,
           autovalidateMode: AutovalidateMode.onUserInteraction,
           cursorColor: const Color(0xFF0A1929),
           cursorErrorColor: const Color(0xFF0A1929),

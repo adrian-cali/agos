@@ -1,19 +1,71 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../data/services/firestore_service.dart';
 
 /// Setup Complete Screen (Figma 335:1059)
 /// Final screen showing setup completion with checklist
-class SetupCompleteScreen extends StatefulWidget {
+class SetupCompleteScreen extends ConsumerStatefulWidget {
   const SetupCompleteScreen({super.key});
 
   @override
-  State<SetupCompleteScreen> createState() => _SetupCompleteScreenState();
+  ConsumerState<SetupCompleteScreen> createState() =>
+      _SetupCompleteScreenState();
 }
 
-class _SetupCompleteScreenState extends State<SetupCompleteScreen>
+class _SetupCompleteScreenState extends ConsumerState<SetupCompleteScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
+  bool _saving = false;
+
+  Future<void> _startMonitoring() async {
+    setState(() => _saving = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        Navigator.pushReplacementNamed(context, '/login');
+        return;
+      }
+
+      final setup = ref.read(setupStateProvider);
+
+      // Generate a device ID if none was set during pairing
+      final deviceId = setup.deviceId.isNotEmpty
+          ? setup.deviceId
+          : 'agos-${user.uid.substring(0, 8)}';
+
+      await FirestoreService().saveDeviceSetup(
+        uid: user.uid,
+        deviceId: deviceId,
+        deviceName: setup.deviceName,
+        location: setup.location,
+        connectionType: setup.connectionType,
+        ownerName: setup.ownerName,
+        ownerPhone: setup.ownerPhone,
+      );
+
+      // Reset setup state
+      ref.read(setupStateProvider.notifier).reset();
+      // Invalidate cached providers so home screen loads fresh data
+      ref.invalidate(hasLinkedDeviceProvider);
+      ref.invalidate(linkedDeviceIdProvider);
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/home');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save device: $e'),
+          backgroundColor: const Color(0xFFE74C3C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   void initState() {
@@ -180,7 +232,7 @@ class _SetupCompleteScreenState extends State<SetupCompleteScreen>
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
+                            onPressed: _saving ? null : _startMonitoring,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
@@ -188,7 +240,16 @@ class _SetupCompleteScreenState extends State<SetupCompleteScreen>
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            child: Row(
+                            child: _saving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(

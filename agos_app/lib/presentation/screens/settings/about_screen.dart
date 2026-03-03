@@ -273,12 +273,12 @@ class AboutScreen extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.eco_outlined, size: 22, color: Color(0xFF314158)),
-          const SizedBox(width: 12),
-          const Expanded(
+          Icon(Icons.eco_outlined, size: 22, color: Color(0xFF314158)),
+          SizedBox(width: 12),
+          Expanded(
             child: Text(
               'AGOS aims to revolutionize water conservation through intelligent greywater recycling. Our mission is to provide affordable, efficient, and sustainable water management solutions that contribute to environmental preservation and resource optimization.',
               style: TextStyle(
@@ -451,8 +451,8 @@ class AboutScreen extends StatelessWidget {
   }
 
   Widget _buildFooter() {
-    return Column(
-      children: const [
+    return const Column(
+      children: [
         Text(
           '© 2025 AGOS Project. All rights reserved.',
           textAlign: TextAlign.center,

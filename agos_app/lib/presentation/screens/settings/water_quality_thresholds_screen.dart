@@ -1,46 +1,104 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
+import '../../../data/services/firestore_service.dart';
+import '../../../data/services/websocket_service.dart' show webSocketServiceProvider;
 
-class WaterQualityThresholdsScreen extends StatefulWidget {
+class WaterQualityThresholdsScreen extends ConsumerStatefulWidget {
   const WaterQualityThresholdsScreen({super.key});
 
   @override
-  State<WaterQualityThresholdsScreen> createState() =>
+  ConsumerState<WaterQualityThresholdsScreen> createState() =>
       _WaterQualityThresholdsScreenState();
 }
 
 class _WaterQualityThresholdsScreenState
-    extends State<WaterQualityThresholdsScreen> {
+    extends ConsumerState<WaterQualityThresholdsScreen> {
+  bool _initialised = false;
+  bool _saving = false;
+
   // Turbidity (NTU)
-  double _turbidityWarning = 20;
-  double _turbidityCritical = 30;
+  double _turbidityMin = 10;
+  double _turbidityWarning = 50;
 
   // pH Level
-  double _phMin = 6.5;
-  double _phMax = 8.5;
-  double _phCriticalMin = 6.0;
-  double _phCriticalMax = 9.0;
+  double _phMin = 6.0;
+  double _phMax = 9.5;
 
   // TDS (ppm)
-  double _tdsWarning = 500;
-  double _tdsCritical = 700;
+  double _tdsWarning = 1000;
+
+  // Tank level (%)
+  double _levelMin = 20;
+  double _levelHigh = 90;
+
+  void _applyThresholds(UserThresholds t) {
+    _turbidityMin = t.turbidityMin;
+    _turbidityWarning = t.turbidityMax;
+    _phMin = t.phMin;
+    _phMax = t.phMax;
+    _tdsWarning = t.tdsMax;
+    _levelMin = t.levelMin;
+    _levelHigh = t.levelHigh;
+  }
 
   void _resetDefaults() {
     setState(() {
-      _turbidityWarning = 20;
-      _turbidityCritical = 30;
-      _phMin = 6.5;
-      _phMax = 8.5;
-      _phCriticalMin = 6.0;
-      _phCriticalMax = 9.0;
-      _tdsWarning = 500;
-      _tdsCritical = 700;
+      _applyThresholds(const UserThresholds());
     });
+  }
+
+  Future<void> _save() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Not signed in')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final thresholds = UserThresholds(
+              turbidityMin: _turbidityMin,
+              turbidityMax: _turbidityWarning,
+              phMin: _phMin,
+              phMax: _phMax,
+              tdsMax: _tdsWarning,
+              levelMin: _levelMin,
+              levelHigh: _levelHigh,
+            );
+      await ref.read(firestoreServiceProvider).saveThresholds(
+            user.uid,
+            thresholds,
+          );
+      ref.read(webSocketServiceProvider).sendThresholds(thresholds);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Thresholds saved.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Load saved thresholds once when provider first emits
+    final savedAsync = ref.watch(userThresholdsProvider);
+    savedAsync.whenData((t) {
+      if (!_initialised) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() { _applyThresholds(t); _initialised = true; });
+        });
+      }
+    });
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
@@ -61,7 +119,7 @@ class _WaterQualityThresholdsScreenState
                       icon: Icons.lightbulb_outline,
                       title: 'Threshold Guidelines',
                       body:
-                          'Warning thresholds trigger caution alerts. Critical thresholds trigger immediate action alerts.',
+                          'Set the optimal min/max range for each parameter. Alerts trigger when readings fall outside the set range.',
                     ),
                     const SizedBox(height: 19),
                     _buildSectionHeader('TURBIDITY (NTU)'),
@@ -71,33 +129,47 @@ class _WaterQualityThresholdsScreenState
                       iconData: Icons.opacity,
                       title: 'Water Clarity Measurement',
                       children: [
-                        _buildSliderRow(
-                          label: 'Warning Level',
-                          value: _turbidityWarning,
-                          badge: '${_turbidityWarning.round()} NTU',
-                          badgeBg: const Color(0xFFFEF3C6),
-                          badgeFg: const Color(0xFFBB4D00),
-                          min: 0,
-                          max: 100,
-                          onChanged: (v) =>
-                              setState(() => _turbidityWarning = v),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Optimal Range',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 14,
+                                color: Color(0xFF45556C),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD0FAE5),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${_turbidityMin.round()} – ${_turbidityWarning.round()} NTU',
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
+                                  color: Color(0xFF007A55),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        _buildSliderRow(
-                          label: 'Critical Level',
-                          value: _turbidityCritical,
-                          badge: '${_turbidityCritical.round()} NTU',
-                          badgeBg: const Color(0xFFFFE2E2),
-                          badgeFg: const Color(0xFFC10007),
-                          min: 0,
-                          max: 100,
-                          onChanged: (v) =>
-                              setState(() => _turbidityCritical = v),
-                        ),
+                        const SizedBox(height: 8),
+                        _buildLabel('Minimum NTU'),
+                        _buildSlider(_turbidityMin, 0, 100,
+                            (v) => setState(() => _turbidityMin = v)),
+                        const SizedBox(height: 8),
+                        _buildLabel('Maximum NTU'),
+                        _buildSlider(_turbidityWarning, 0, 200,
+                            (v) => setState(() => _turbidityWarning = v)),
                         const SizedBox(height: 12),
                         _buildHintBox(
-                          'Optimal Range: 0-20 NTU',
-                          'Recommended: Warning at 20 NTU, Critical at 30 NTU',
+                          'Optimal Range: 10–50 NTU',
+                          'Alerts trigger when readings fall outside your min–max range.',
                         ),
                       ],
                     ),
@@ -147,47 +219,9 @@ class _WaterQualityThresholdsScreenState
                         _buildSlider(
                             _phMax, 0, 14, (v) => setState(() => _phMax = v)),
                         const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Critical Limits',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 14,
-                                color: Color(0xFF45556C),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFE2E2),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                '< ${_phCriticalMin.toStringAsFixed(1)} or > ${_phCriticalMax.toStringAsFixed(1)}',
-                                style: const TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                  color: Color(0xFFC10007),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        _buildLabel('Critical Minimum'),
-                        _buildSlider(_phCriticalMin, 0, 14,
-                            (v) => setState(() => _phCriticalMin = v)),
-                        const SizedBox(height: 8),
-                        _buildLabel('Critical Maximum'),
-                        _buildSlider(_phCriticalMax, 0, 14,
-                            (v) => setState(() => _phCriticalMax = v)),
-                        const SizedBox(height: 12),
                         _buildHintBox(
                           'Optimal Range: 6.5-8.5',
-                          'Recommended: 6.5-8.5 (neutral to slightly alkaline)',
+                          'Alerts trigger when pH falls outside your min–max range.',
                         ),
                       ],
                     ),
@@ -200,32 +234,56 @@ class _WaterQualityThresholdsScreenState
                       title: 'Dissolved Mineral Content',
                       children: [
                         _buildSliderRow(
-                          label: 'Warning Level',
+                          label: 'Maximum Level',
                           value: _tdsWarning,
                           badge: '${_tdsWarning.round()} ppm',
                           badgeBg: const Color(0xFFFEF3C6),
                           badgeFg: const Color(0xFFBB4D00),
                           min: 0,
-                          max: 1000,
+                          max: 2000,
                           onChanged: (v) =>
                               setState(() => _tdsWarning = v),
                         ),
                         const SizedBox(height: 12),
+                        _buildHintBox(
+                          'Acceptable Range: < 1000 ppm',
+                          'Alerts trigger when TDS exceeds your maximum.',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 19),
+                    _buildSectionHeader('TANK LEVEL (%)'),
+                    const SizedBox(height: 12),
+                    _buildParameterCard(
+                      iconGradient: const [Color(0xFF00D3F2), Color(0xFF0AA1DD)],
+                      iconData: Icons.water_drop_outlined,
+                      title: 'Minimum Tank Level',
+                      children: [
                         _buildSliderRow(
-                          label: 'Critical Level',
-                          value: _tdsCritical,
-                          badge: '${_tdsCritical.round()} ppm',
-                          badgeBg: const Color(0xFFFFE2E2),
-                          badgeFg: const Color(0xFFC10007),
+                          label: 'Alert Below',
+                          value: _levelMin,
+                          badge: '${_levelMin.round()}%',
+                          badgeBg: const Color(0xFFFEF3C6),
+                          badgeFg: const Color(0xFFBB4D00),
                           min: 0,
-                          max: 1000,
-                          onChanged: (v) =>
-                              setState(() => _tdsCritical = v),
+                          max: 100,
+                          onChanged: (v) => setState(() => _levelMin = v.clamp(0, _levelHigh - 5)),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSliderRow(
+                          label: 'Optimal Above',
+                          value: _levelHigh,
+                          badge: '${_levelHigh.round()}%',
+                          badgeBg: const Color(0xFFD1FAE5),
+                          badgeFg: const Color(0xFF065F46),
+                          min: 0,
+                          max: 100,
+                          onChanged: (v) => setState(() => _levelHigh = v.clamp(_levelMin + 5, 100)),
                         ),
                         const SizedBox(height: 12),
                         _buildHintBox(
-                          'Optimal Range: 0-500 ppm',
-                          'Recommended: Warning at 500 ppm, Critical at 700 ppm',
+                          'Optimal: Keep tank above ${_levelHigh.round()}%',
+                          'Alert when level drops below ${_levelMin.round()}%',
                         ),
                       ],
                     ),
@@ -262,34 +320,34 @@ class _WaterQualityThresholdsScreenState
                         const SizedBox(width: 19),
                         Expanded(
                           child: GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content:
-                                        Text('Thresholds saved.')),
-                              );
-                            },
+                            onTap: _saving ? null : _save,
                             child: Container(
                               height: 36,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(14),
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF00B8DB),
-                                    Color(0xFF155DFC)
-                                  ],
+                                gradient: LinearGradient(
+                                  colors: _saving
+                                      ? [Colors.grey.shade400, Colors.grey.shade400]
+                                      : const [Color(0xFF00B8DB), Color(0xFF155DFC)],
                                 ),
                               ),
-                              child: const Center(
-                                child: Text(
-                                  'Save Changes',
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                              child: Center(
+                                child: _saving
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white))
+                                    : const Text(
+                                        'Save Changes',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 14,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                               ),
                             ),
                           ),

@@ -1,10 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../../core/constants/connection_method_design.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../data/services/ble_provisioning_service.dart';
 
-class BluetoothSetup1Screen extends StatelessWidget {
+class BluetoothSetup1Screen extends StatefulWidget {
   const BluetoothSetup1Screen({super.key});
+
+  @override
+  State<BluetoothSetup1Screen> createState() => _BluetoothSetup1ScreenState();
+}
+
+class _BluetoothSetup1ScreenState extends State<BluetoothSetup1Screen> {
+  bool _enabling = false;
+  final _ble = BleProvisioningService();
+
+  Future<void> _enableBluetooth() async {
+    if (_ble.simulationMode) {
+      // In simulation mode, skip the real Bluetooth dialog
+      if (mounted) Navigator.pushNamed(context, '/bluetooth-setup-2');
+      return;
+    }
+    setState(() => _enabling = true);
+    try {
+      await FlutterBluePlus.turnOn();
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (mounted) Navigator.pushNamed(context, '/bluetooth-setup-2');
+    } catch (e) {
+      if (mounted) Navigator.pushNamed(context, '/bluetooth-setup-2');
+    } finally {
+      if (mounted) setState(() => _enabling = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -169,26 +197,23 @@ class BluetoothSetup1Screen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            onPressed: () => Navigator.pushNamed(context, '/bluetooth-setup-2'),
-                            child: const Text('Enable Bluetooth', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.neutral1)),
+                            onPressed: _enabling ? null : _enableBluetooth,
+                            child: _enabling
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Text('Enable Bluetooth', style: TextStyle(fontWeight: FontWeight.w600, color: Color.fromARGB(255, 255, 255, 255))),
                           ),
                         ),
                       ),
                     ],
                   ),
                   ),
-                  const SizedBox(height: 24),
-
-                  // Step indicator (keeps the same placement as Figma)
-                  // Row(
-                  //   mainAxisAlignment: MainAxisAlignment.center,
-                  //   children: [
-                  //     _buildStepIndicator(1, true),
-                  //     Container(width: 40, height: 2, color: AppColors.neutral5.withValues(alpha: 0.45)),
-                  //     _buildStepIndicator(2, false),
-                  //   ],
-                  // ),
-                  const SizedBox(height: 20),
 
                   // Bottom action (Next)
                   // SizedBox(
@@ -231,7 +256,7 @@ class BluetoothSetup1Screen extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: const LinearProgressIndicator(
-                        value: 0.25,
+                        value: 0.14,
                         minHeight: 8,
                         backgroundColor: Color.fromRGBO(15, 23, 42, 0.20),
                         valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),

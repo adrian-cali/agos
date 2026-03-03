@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/websocket_service.dart';
+import '../../../data/services/firestore_service.dart'
+    show firestoreAlertsProvider, linkedDeviceIdProvider;
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -15,6 +17,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final List<String> _tabs = ['All', 'Alerts', 'Updates', 'Maintenance'];
+
+  /// IDs dismissed locally this session (swipe-delete or Mark All Read)
+  final Set<String> _dismissedIds = {};
 
   @override
   void initState() {
@@ -30,7 +35,31 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final alerts = ref.watch(alertsProvider);
+    // Live WebSocket alerts (real-time, this session only)
+    final wsAlerts = ref.watch(alertsProvider);
+
+    // Historical alerts derived from Firestore sensor readings
+    final deviceIdAsync = ref.watch(linkedDeviceIdProvider);
+    final deviceId = deviceIdAsync.valueOrNull ?? '';
+    final fsAlertsAsync = deviceId.isEmpty
+        ? const AsyncValue<List<AlertItem>>.data([])
+        : ref.watch(firestoreAlertsProvider(deviceId));
+    final fsAlerts = fsAlertsAsync.valueOrNull ?? [];
+
+    // Merge: deduplicate by id, WS alerts take precedence (they're live)
+    final wsIds = wsAlerts.map((a) => a.id).toSet();
+    final List<AlertItem> combined = [
+      ...wsAlerts,
+      ...fsAlerts.where((a) => !wsIds.contains(a.id)),
+    ];
+    // Sort newest-first
+    combined.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    // Remove locally dismissed
+    final visible = combined
+        .where((a) => !_dismissedIds.contains(a.id))
+        .toList();
+
+    final isLoading = fsAlertsAsync.isLoading && fsAlerts.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -68,7 +97,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                       ),
                       TextButton(
                         onPressed: () {
-                          // Mark all read — currently a no-op placeholder
+                          setState(() {
+                            _dismissedIds.addAll(combined.map((a) => a.id));
+                          });
                         },
                         child: const Text('Mark All Read',
                             style: TextStyle(
@@ -97,9 +128,36 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                           const TextStyle(fontSize: 13, color: AppColors.neutral1),
                       dividerColor: Colors.transparent,
                       indicatorSize: TabBarIndicatorSize.tab,
-                      tabs: _tabs
-                          .map((t) => Tab(text: t, height: 36))
-                          .toList(),
+                      tabs: [
+                        Tab(
+                            text: _tabLabel('All', visible.length),
+                            height: 36),
+                        Tab(
+                            text: _tabLabel(
+                                'Alerts',
+                                visible
+                                    .where((a) =>
+                                        a.severity == 'critical' ||
+                                        a.severity == 'warning')
+                                    .length),
+                            height: 36),
+                        Tab(
+                            text: _tabLabel(
+                                'Updates',
+                                visible
+                                    .where((a) => a.severity == 'info')
+                                    .length),
+                            height: 36),
+                        Tab(
+                            text: _tabLabel(
+                                'Maint.',
+                                visible
+                                    .where((a) => a.description
+                                        .toLowerCase()
+                                        .contains('maintenance'))
+                                    .length),
+                            height: 36),
+                      ],
                     ),
                   ),
                 ],
@@ -110,15 +168,22 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildNotificationList(alerts),
-                  _buildNotificationList(alerts
+                  isLoading
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(48),
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary),
+                          ))
+                      : _buildNotificationList(visible),
+                  _buildNotificationList(visible
                       .where((a) => a.severity == 'critical' ||
                           a.severity == 'warning')
                       .toList()),
-                  _buildNotificationList(alerts
+                  _buildNotificationList(visible
                       .where((a) => a.severity == 'info')
                       .toList()),
-                  _buildNotificationList(alerts
+                  _buildNotificationList(visible
                       .where((a) =>
                           a.description.toLowerCase().contains('maintenance'))
                       .toList()),
@@ -130,6 +195,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
       ),
     );
   }
+
+  String _tabLabel(String name, int count) =>
+      count > 0 ? '$name ($count)' : name;
 
   Widget _buildNotificationList(List<AlertItem> items) {
     if (items.isEmpty) {
@@ -183,14 +251,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
             ),
             confirmDismiss: (direction) async {
               if (direction == DismissDirection.endToStart) {
-                // Delete
-                ref
-                    .read(webSocketServiceProvider)
-                    .deleteAlert(alert.id);
+                // Delete — remove from WS notifier and mark dismissed locally
+                ref.read(webSocketServiceProvider).deleteAlert(alert.id);
+                setState(() => _dismissedIds.add(alert.id));
                 return true;
               }
-              // Mark as read (swipe left to right)
-              return false;
+              // Swipe right → mark as read (just remove visually)
+              setState(() => _dismissedIds.add(alert.id));
+              return true;
             },
             child: _buildNotificationCard(alert),
           );

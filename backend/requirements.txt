@@ -2,17 +2,17 @@
 # Install with: pip install -r requirements.txt
 
 # Web framework & ASGI server
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 
 # WebSocket support
-websockets==12.0
+websockets>=12.0
 
 # Data validation (required by FastAPI)
-pydantic==2.5.3
+pydantic>=2.5.0
 
-# HTTP client (optional - for health checks / testing)
-httpx==0.26.0
+# Environment variable management
+python-dotenv>=1.0.0
 
-# Environment variable management (optional)
-python-dotenv==1.0.0
+# Firebase Admin SDK
+firebase-admin>=6.4.0

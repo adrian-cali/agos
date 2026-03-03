@@ -209,12 +209,36 @@ class HelpScreen extends StatelessWidget {
 
   Widget _buildFaqCard(BuildContext context) {
     final faqs = [
-      'How do I interpret the water quality readings?',
-      'What should I do if I receive a critical alert?',
-      'How often should I calibrate the sensors?',
-      'Can I export my water usage data?',
-      'Why is my tank showing low water level?',
-      'How do I change notification settings?',
+      (
+        q: 'How do I interpret the water quality readings?',
+        a:
+            'AGOS displays three key parameters:\n\n• Turbidity (NTU) — measures water cloudiness. Lower is clearer. The Optimal range is set in your Threshold Settings.\n• pH — measures acidity or alkalinity. A neutral pH is 7.0; safe drinking water is typically 6.5–8.5.\n• TDS (ppm) — Total Dissolved Solids indicates mineral content. Lower values mean purer water.\n\nA green "Optimal" badge means the reading is within your configured safe range. An amber "Warning" badge means the value is outside the range and may need attention.',
+      ),
+      (
+        q: 'What should I do if I receive a warning alert?',
+        a:
+            'When a warning alert appears:\n\n1. Open the Notifications tab to see which parameter triggered the alert and the exact reading.\n2. Check the Threshold Settings to confirm your min/max ranges are correctly configured.\n3. Inspect the water source or tank for visible changes (discolouration, sediment, odour).\n4. If the reading persists outside range, check that the sensors are clean and fully submerged.\n5. Contact your water authority or a technician if the issue continues.',
+      ),
+      (
+        q: 'How often should I calibrate the sensors?',
+        a:
+            'Sensor calibration frequency depends on usage and environment:\n\n• pH sensor — calibrate every 1–3 months, or whenever readings seem consistently off.\n• Turbidity sensor — clean the probe monthly; recalibrate if readings drift noticeably.\n• TDS sensor — calibrate every 3–6 months using a known reference solution.\n\nAlways calibrate after the sensor has been dry or stored for an extended period.',
+      ),
+      (
+        q: 'Can I export my water usage data?',
+        a:
+            'Yes! AGOS supports exporting your sensor readings in CSV and JSON formats.\n\nTo export:\n1. Go to Settings → Data & Logging.\n2. Choose your preferred format — "Export CSV" for spreadsheet-compatible data, or "Export JSON" for raw data.\n3. The file will be shared via your device\'s share sheet (email, Drive, etc.).\n\nNote: You can also export your full account data (profile + readings) from Settings → Privacy & Security → Export My Data.',
+      ),
+      (
+        q: 'Why is my tank showing low water level?',
+        a:
+            'A low water level reading can have several causes:\n\n• The actual water level in the tank is genuinely low — check the tank physically.\n• The ultrasonic level sensor may be misaligned, obstructed, or out of water.\n• The "Low Level" threshold in your settings may be set too high — adjust it under Settings → Water Quality Thresholds.\n• The ESP32 device may have lost connection; check the connection status indicator on the Dashboard.',
+      ),
+      (
+        q: 'How do I change notification settings?',
+        a:
+            'To manage notifications:\n\n1. Tap the Settings icon (bottom navigation bar).\n2. Under "Notifications & Alerts", toggle Push Notifications on or off to enable or disable all OS notifications.\n3. To change the threshold values that trigger alerts, tap "Water Quality Thresholds" and adjust the min/max sliders for Turbidity, pH, and TDS.\n\nIn-app alerts in the Notification modal are always shown regardless of the push notification toggle.',
+      ),
     ];
 
     return Container(
@@ -230,57 +254,60 @@ class HelpScreen extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        children: List.generate(faqs.length, (i) {
-          final isLast = i == faqs.length - 1;
-          return Column(
-            children: [
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(faqs[i])),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.help_outline,
-                            size: 16, color: Color(0xFF314158)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            faqs[i],
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14,
-                              color: Color(0xFF314158),
-                              height: 1.43,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.chevron_right,
-                            size: 16, color: Color(0xFF62748E)),
-                      ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          children: List.generate(faqs.length, (i) {
+            final isLast = i == faqs.length - 1;
+            return Column(
+              children: [
+                Theme(
+                  data: Theme.of(context).copyWith(
+                    dividerColor: Colors.transparent,
+                    splashColor: const Color(0xFF00D3F2).withValues(alpha: 0.08),
+                  ),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
+                    childrenPadding: const EdgeInsets.only(
+                        left: 44, right: 16, bottom: 16),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                    leading: const Icon(Icons.help_outline,
+                        size: 16, color: Color(0xFF314158)),
+                    trailing: const Icon(Icons.chevron_right,
+                        size: 16, color: Color(0xFF62748E)),
+                    title: Text(
+                      faqs[i].q,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        color: Color(0xFF314158),
+                        height: 1.43,
+                      ),
                     ),
+                    children: [
+                      Text(
+                        faqs[i].a,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          color: Color(0xFF45556C),
+                          height: 1.6,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              if (!isLast)
-                Container(
-                  height: 1.18,
-                  margin: const EdgeInsets.symmetric(horizontal: 0),
-                  color: const Color(0xFFA2F4FD).withValues(alpha: 0.3),
-                ),
-            ],
-          );
-        }),
+                if (!isLast)
+                  Container(
+                    height: 1.18,
+                    color: const Color(0xFFA2F4FD).withValues(alpha: 0.3),
+                  ),
+              ],
+            );
+          }),
+        ),
       ),
     );
   }
@@ -357,9 +384,9 @@ class HelpScreen extends StatelessWidget {
           Container(
             width: 48,
             height: 48,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 colors: [Color(0xFF00D3F2), Color(0xFF155DFC)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,

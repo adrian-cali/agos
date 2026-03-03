@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    
+    
+    {
+      "name": "AGOS (Windows)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}/agos_app",
+      "deviceId": "windows",
+      "flutterMode": "debug"
+    },
+    {
+      "name": "AGOS (Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "cwd": "${workspaceFolder}/agos_app",
+      "flutterMode": "debug"
+    },
+    {
+      "name": "AGOS (Android)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}/agos_app",
+      "flutterMode": "debug"
+    },
+    {
+      "name": "AGOS (Android — wireless 192.168.8.124:43425)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}/agos_app",
+      "deviceId": "192.168.8.124:43425",
+      "preLaunchTask": "adb connect 192.168.8.124:43425",
+      "flutterMode": "debug"    },
+    {
+      "name": "AGOS (Android — CPH1933 wireless)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}/agos_app",
+      "deviceId": "adb-92535e42-xW8cfD._adb-tls-connect._tcp",
+      "flutterMode": "debug"    }
+  ]
+}

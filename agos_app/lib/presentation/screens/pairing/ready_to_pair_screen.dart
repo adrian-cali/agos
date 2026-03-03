@@ -66,7 +66,7 @@ class _ReadyToPairScreenState extends State<ReadyToPairScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      onPressed: () => Navigator.pushReplacementNamed(context, '/connection-method'),
+                      onPressed: () => Navigator.pushReplacementNamed(context, '/device-setup-intro'),
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF0B3A57)),
                     ),
                     const Expanded(
@@ -345,7 +345,7 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      onPressed: () => Navigator.pushReplacementNamed(context, '/connection-method'),
+                      onPressed: () => Navigator.pushReplacementNamed(context, '/device-setup-intro'),
                       icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF0B3A57)),
                     ),
                     const Expanded(

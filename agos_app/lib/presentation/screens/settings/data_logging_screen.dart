@@ -1,18 +1,254 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../../data/services/firestore_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
 
-class DataLoggingScreen extends StatefulWidget {
+class DataLoggingScreen extends ConsumerStatefulWidget {
   const DataLoggingScreen({super.key});
 
   @override
-  State<DataLoggingScreen> createState() => _DataLoggingScreenState();
+  ConsumerState<DataLoggingScreen> createState() => _DataLoggingScreenState();
 }
 
-class _DataLoggingScreenState extends State<DataLoggingScreen> {
-  bool _automaticLogging = true;
-  bool _cloudSync = false;
+class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   int _retentionDays = 30; // 7, 30, or 90
+
+  bool _exportingCsv = false;
+  bool _exportingJson = false;
+  bool _exportingPdf = false;
+
+  String get _deviceId =>
+      ref.read(linkedDeviceIdProvider).valueOrNull ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    // Defer prefs load to first frame so providers are fully initialized
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
+  }
+
+  Future<void> _loadPrefs() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+    try {
+      final service = ref.read(firestoreServiceProvider);
+      final prefs = await service
+          .loadDataLoggingPrefs(user.uid)
+          .timeout(const Duration(seconds: 5));
+      if (mounted) {
+        setState(() {
+          _retentionDays = prefs['retentionDays'] as int? ?? 30;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<List<SensorReading>> _fetchReadings() async {
+    final service = ref.read(firestoreServiceProvider);
+    // Cap at 7 days to stay within Firestore free-tier read limits.
+    // Upgrade to Blaze plan or reduce retention to export more.
+    const int maxExportDays = 7;
+    final exportDays = _retentionDays.clamp(1, maxExportDays);
+    return service.fetchReadings(_deviceId, days: exportDays);
+  }
+
+  Future<void> _exportCsv() async {
+    setState(() => _exportingCsv = true);
+    try {
+      final readings = await _fetchReadings();
+      if (readings.isEmpty) {
+        _snack('No data to export.');
+        return;
+      }
+      final buf = StringBuffer();
+      buf.writeln(
+          'timestamp,device_id,turbidity_ntu,ph,tds_ppm,level_pct,volume_liters,flow_rate,pump_active');
+      for (final r in readings) {
+        buf.writeln(
+            '${r.timestamp.toIso8601String()},${r.deviceId},${r.turbidity},${r.ph},${r.tds},${r.level},${r.volume},${r.flowRate},${r.pumpActive}');
+      }
+      final csvBytes = Uint8List.fromList(utf8.encode(buf.toString()));
+      await Share.shareXFiles(
+        [XFile.fromData(csvBytes, name: 'agos_export.csv', mimeType: 'text/csv')],
+        subject: 'AGOS Sensor Data Export',
+      );
+    } catch (e) {
+      _snack('Export failed: $e');
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
+    }
+  }
+
+  Future<void> _exportJson() async {
+    setState(() => _exportingJson = true);
+    try {
+      final readings = await _fetchReadings();
+      if (readings.isEmpty) {
+        _snack('No data to export.');
+        return;
+      }
+      final list = readings
+          .map((r) => {
+                'timestamp': r.timestamp.toIso8601String(),
+                'device_id': r.deviceId,
+                'turbidity': r.turbidity,
+                'ph': r.ph,
+                'tds': r.tds,
+                'level_pct': r.level,
+                'volume_liters': r.volume,
+                'flow_rate': r.flowRate,
+                'pump_active': r.pumpActive,
+              })
+          .toList();
+      final json = const JsonEncoder.withIndent('  ').convert(list);
+      final jsonBytes = Uint8List.fromList(utf8.encode(json));
+      await Share.shareXFiles(
+        [XFile.fromData(jsonBytes, name: 'agos_export.json', mimeType: 'application/json')],
+        subject: 'AGOS Sensor Data Export (JSON)',
+      );
+    } catch (e) {
+      _snack('Export failed: $e');
+    } finally {
+      if (mounted) setState(() => _exportingJson = false);
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    setState(() => _exportingPdf = true);
+    try {
+      final readings = await _fetchReadings();
+      final doc = pw.Document();
+      final now = DateTime.now();
+
+      doc.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (ctx) => [
+          pw.Header(level: 0, child: pw.Text('AGOS Water Quality Report')),
+          pw.Paragraph(
+              text:
+                  'Generated: ${now.year}-${_pad(now.month)}-${_pad(now.day)} ${_pad(now.hour)}:${_pad(now.minute)}'),
+          pw.Paragraph(text: 'Device: $_deviceId'),
+          pw.Paragraph(
+              text: 'Period: last $_retentionDays days | Readings: ${readings.length}'),
+          pw.SizedBox(height: 12),
+          if (readings.isEmpty)
+            pw.Paragraph(text: 'No data found for this period.')
+          else ...[
+            _summaryTable(readings),
+            pw.SizedBox(height: 12),
+            pw.Text('Latest 50 Readings',
+                style: pw.TextStyle(
+                    fontSize: 12, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            _dataTable(readings.reversed.take(50).toList().reversed.toList()),
+          ],
+        ],
+      ));
+
+      final bytes = await doc.save();
+      await Printing.sharePdf(bytes: bytes, filename: 'agos_report.pdf');
+    } catch (e) {
+      _snack('PDF generation failed: $e');
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
+
+  String _pad(int n) => n.toString().padLeft(2, '0');
+
+  pw.Widget _summaryTable(List<SensorReading> readings) {
+    double avgTurb = readings.map((r) => r.turbidity).reduce((a, b) => a + b) /
+        readings.length;
+    double avgPh =
+        readings.map((r) => r.ph).reduce((a, b) => a + b) / readings.length;
+    double avgTds =
+        readings.map((r) => r.tds).reduce((a, b) => a + b) / readings.length;
+    return pw.TableHelper.fromTextArray(
+      headers: ['Metric', 'Average', 'Min', 'Max'],
+      data: [
+        [
+          'Turbidity (NTU)',
+          avgTurb.toStringAsFixed(2),
+          readings
+              .map((r) => r.turbidity)
+              .reduce((a, b) => a < b ? a : b)
+              .toStringAsFixed(2),
+          readings
+              .map((r) => r.turbidity)
+              .reduce((a, b) => a > b ? a : b)
+              .toStringAsFixed(2),
+        ],
+        [
+          'pH',
+          avgPh.toStringAsFixed(2),
+          readings
+              .map((r) => r.ph)
+              .reduce((a, b) => a < b ? a : b)
+              .toStringAsFixed(2),
+          readings
+              .map((r) => r.ph)
+              .reduce((a, b) => a > b ? a : b)
+              .toStringAsFixed(2),
+        ],
+        [
+          'TDS (ppm)',
+          avgTds.toStringAsFixed(1),
+          readings
+              .map((r) => r.tds)
+              .reduce((a, b) => a < b ? a : b)
+              .toStringAsFixed(1),
+          readings
+              .map((r) => r.tds)
+              .reduce((a, b) => a > b ? a : b)
+              .toStringAsFixed(1),
+        ],
+      ],
+    );
+  }
+
+  pw.Widget _dataTable(List<SensorReading> readings) {
+    return pw.TableHelper.fromTextArray(
+      headers: ['Time', 'Turb', 'pH', 'TDS', 'Level%', 'Vol(L)'],
+      data: readings
+          .map((r) => [
+                '${_pad(r.timestamp.hour)}:${_pad(r.timestamp.minute)}',
+                r.turbidity.toStringAsFixed(1),
+                r.ph.toStringAsFixed(2),
+                r.tds.toStringAsFixed(0),
+                r.level.toStringAsFixed(1),
+                r.volume.toStringAsFixed(1),
+              ])
+          .toList(),
+      cellStyle: const pw.TextStyle(fontSize: 8),
+      headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+    );
+  }
+
+  Future<void> _savePrefs() async {
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user == null) return;
+      final service = ref.read(firestoreServiceProvider);
+      await service.saveDataLoggingPrefs(user.uid, {
+        'retentionDays': _retentionDays,
+      });
+      if (mounted) _snack('Preferences saved.');
+    } catch (e) {
+      if (mounted) _snack('Save failed: $e');
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,34 +267,42 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildSectionHeader('LOGGING SETTING'),
-                    const SizedBox(height: 16),
-                    // Logging settings cards
-                    _buildCard(
-                      iconData: Icons.bar_chart_outlined,
-                      title: 'Automatic Logging',
-                      subtitle: 'Record sensor data continuously',
-                      trailing: _buildToggle(
-                        value: _automaticLogging,
-                        onChanged: (v) =>
-                            setState(() => _automaticLogging = v),
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    _buildCard(
-                      iconData: Icons.cloud_outlined,
-                      title: 'Cloud Sync',
-                      subtitle: 'Backup data to cloud storage',
-                      trailing: _buildToggle(
-                        value: _cloudSync,
-                        onChanged: (v) => setState(() => _cloudSync = v),
-                      ),
-                    ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 24),
+                    _buildSectionHeader('LOGGING SETTINGS'),
+                    const SizedBox(height: 8),
                     _buildRetentionCard(),
                     const SizedBox(height: 24),
                     _buildSectionHeader('EXPORT DATA'),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    // Free-tier quota note
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F9FF),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFFBAE6FD), width: 1),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 16, color: Color(0xFF0369A1)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Exports are limited to the last 7 days to stay within free-tier read limits.',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 12,
+                                color: Color(0xFF0369A1),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     _buildExportCard(
                       iconGradient: const [
                         Color(0xFF00D492),
@@ -67,6 +311,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       iconData: Icons.table_chart_outlined,
                       title: 'Export as CSV',
                       subtitle: 'Spreadsheet format for analysis',
+                      onTap: _exportCsv,
+                      isLoading: _exportingCsv,
                     ),
                     const SizedBox(height: 5),
                     _buildExportCard(
@@ -77,6 +323,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       iconData: Icons.data_object_outlined,
                       title: 'Export as JSON',
                       subtitle: 'Raw data format',
+                      onTap: _exportJson,
+                      isLoading: _exportingJson,
                     ),
                     const SizedBox(height: 5),
                     _buildExportCard(
@@ -87,6 +335,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                       iconData: Icons.picture_as_pdf_outlined,
                       title: 'Generate Report',
                       subtitle: 'PDF with charts and statistics',
+                      onTap: _exportPdf,
+                      isLoading: _exportingPdf,
                     ),
                     const SizedBox(height: 24),
                     _buildSectionHeader('DATA MANAGEMENT'),
@@ -100,9 +350,9 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                         border: Border.all(
                             color: const Color(0xFFFEE685), width: 1.18),
                       ),
-                      child: Row(
+                      child: const Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Icon(Icons.warning_amber_outlined,
                               size: 20, color: Color(0xFF7B3306)),
                           SizedBox(width: 12),
@@ -221,92 +471,6 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
     );
   }
 
-  Widget _buildCard({
-    required IconData iconData,
-    required String title,
-    required String subtitle,
-    required Widget trailing,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(iconData, size: 20, color: const Color(0xFF314158)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 16,
-                    color: Color(0xFF314158),
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 14,
-                    color: Color(0xFF62748E),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          trailing,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToggle({
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: Container(
-        width: 32,
-        height: 18,
-        decoration: BoxDecoration(
-          color:
-              value ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 150),
-          alignment:
-              value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.all(2),
-            width: 14,
-            height: 14,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildRetentionCard() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -326,8 +490,8 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.history, size: 20, color: Color(0xFF314158)),
               SizedBox(width: 12),
               Expanded(
@@ -364,8 +528,10 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: GestureDetector(
-                    onTap: () =>
-                        setState(() => _retentionDays = days),
+                    onTap: () {
+                      setState(() => _retentionDays = days);
+                      _savePrefs();
+                    },
                     child: Container(
                       height: 36,
                       decoration: BoxDecoration(
@@ -408,8 +574,12 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
     required IconData iconData,
     required String title,
     required String subtitle,
+    required VoidCallback onTap,
+    bool isLoading = false,
   }) {
-    return Container(
+    return GestureDetector(
+      onTap: isLoading ? null : onTap,
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -462,10 +632,17 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right,
-              size: 20, color: Color(0xFF62748E)),
+          isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right,
+                  size: 20, color: Color(0xFF62748E)),
         ],
       ),
+    ),
     );
   }
 
@@ -478,7 +655,7 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
         title: const Text('Clear All Data',
             style: TextStyle(color: Color(0xFF141A1E))),
         content: const Text(
-            'Permanently delete all stored sensor data. This action cannot be undone.'),
+            'Permanently delete all stored sensor readings for this device. This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -486,11 +663,9 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
                 style: TextStyle(color: Color(0xFF141A1E))),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('All data cleared.')),
-              );
+              await _clearAllData();
             },
             child: const Text('Clear',
                 style: TextStyle(color: Color(0xFFE7000B))),
@@ -498,5 +673,15 @@ class _DataLoggingScreenState extends State<DataLoggingScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _clearAllData() async {
+    try {
+      final service = ref.read(firestoreServiceProvider);
+      await service.deleteAllReadings(_deviceId);
+      if (mounted) _snack('All sensor data cleared.');
+    } catch (e) {
+      if (mounted) _snack('Failed to clear data: $e');
+    }
   }
 }

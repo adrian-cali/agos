@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "sensor_readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "device_id", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sensor_readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "device_id", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

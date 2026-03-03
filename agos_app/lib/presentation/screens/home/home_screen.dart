@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:async';
 import 'dart:math' as math;
 import '../../../data/services/websocket_service.dart';
+import '../../../data/services/firestore_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
 
@@ -19,6 +21,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   late Animation<double> _waveAnimation;
   late AnimationController _pageController;
 
+  // Pump card local state
+  Timer? _pumpCountdownTimer;
+  int _pumpRemainingSeconds = 0;
+  bool _pumpManualOn = false;
+  int _selectedPumpDuration = 10; // default 10 minutes
+
   @override
   void initState() {
     super.initState();
@@ -31,14 +39,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       duration: const Duration(milliseconds: 600),
       vsync: this,
     )..forward();
+
+    // Connect WebSocket so tankDataProvider and waterQualityProvider get live data.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        ref.read(webSocketServiceProvider).connect();
+      } catch (_) {}
+    });
   }
 
   @override
   void dispose() {
     _waveController.dispose();
     _pageController.dispose();
+    _pumpCountdownTimer?.cancel();
     super.dispose();
   }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning,';
+    if (hour < 17) return 'Good Afternoon,';
+    return 'Good Evening,';
+  }
+
 
   /// Wraps [child] with a staggered slide-up + fade-in animation.
   /// [index] (0, 1, 2, …) determines the start offset of the interval.
@@ -63,6 +87,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final tankData = ref.watch(tankDataProvider);
+    // Use the real device ID from Firestore; fall back to simulator ID during dev
+    final deviceIdAsync = ref.watch(linkedDeviceIdProvider);
+    final deviceId = deviceIdAsync.valueOrNull ?? '';
+    final latestAsync = ref.watch(latestReadingProvider(deviceId));
+    final latest = latestAsync.valueOrNull;
+    // User threshold settings for dynamic status
+    final thresholds = ref.watch(userThresholdsProvider).valueOrNull
+        ?? const UserThresholds();
+    // Connection state
+    final isLive = ref.watch(wsConnectedProvider);
+    final lastData = ref.watch(wsLastDataProvider);
+
+    // Merge: prefer WebSocket live data, fall back to Firestore
+    final effectiveTank = (tankData.level > 0 || latest == null)
+        ? tankData
+        : TankData(
+            level: latest.level,
+            volume: latest.volume,
+            capacity: tankData.capacity,
+            flowRate: latest.flowRate,
+            status: latest.status,
+            timestamp: latest.timestamp.toIso8601String(),
+          );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
@@ -82,10 +129,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     _buildAnimated(0, _buildSavingsCard()),
                     const SizedBox(height: 25),
                     // Main Water Tank card
-                    _buildAnimated(1, _buildWaterTankCard(tankData)),
+                    _buildAnimated(1, _buildWaterTankCard(effectiveTank, thresholds, isLive: isLive, lastData: lastData)),
+                    const SizedBox(height: 25),
+                    // Pump Control card
+                    _buildAnimated(2, _buildPumpCard()),
                     const SizedBox(height: 25),
                     // AGOS logo at bottom
-                    _buildAnimated(2, _buildBottomLogo()),
+                    _buildAnimated(3, _buildBottomLogo()),
                     const SizedBox(height: 100), // Space for bottom nav
                   ],
                 ),
@@ -105,13 +155,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
+          Flexible(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Good Morning,',
-                style: TextStyle(
-                  color: const Color(0xFF90A5B4),
+                _greeting(),
+                style: const TextStyle(
+                  color: Color(0xFF90A5B4),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   fontFamily: 'Poppins',
@@ -119,16 +170,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ),
               //const SizedBox(height: 2),
-              Text(
-                'JOHN DOE',
-                style: TextStyle(
-                  color: const Color(0xFF141A1E),
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Poppins',
-                ),
+              Consumer(
+                builder: (context, ref, _) {
+                  final profileAsync = ref.watch(userProfileProvider);
+                  final name = profileAsync.valueOrNull?.name.toUpperCase() ?? '';
+                  return Text(
+                    name.isEmpty ? '...' : name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF141A1E),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Poppins',
+                    ),
+                  );
+                },
               ),
             ],
+          ),
           ),
           // Notification icon with red dot
           GestureDetector(
@@ -161,6 +220,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   size: 20,
                 ),
               ),
+              if (ref.watch(hasUnreadAlertsProvider))
               Positioned(
                 top: 0,
                 right: 0,
@@ -205,7 +265,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               animation: _waveAnimation,
               builder: (context, child) {
                 return CustomPaint(
-                  size: Size(double.infinity, 160),
+                  size: const Size(double.infinity, 160),
                   painter: WaterWavePainter(
                     animationValue: _waveAnimation.value,
                   ),
@@ -219,8 +279,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Left side content
-                  Expanded(
-                    child: Container(
+                  const Expanded(
+                    child: SizedBox(
                       width: 100,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +293,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               Text(
                                 'February 01, 2026',
                                 style: TextStyle(
-                                  color: const Color(0xFF90A5B4),
+                                  color: Color(0xFF90A5B4),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w400,
                                   fontFamily: 'Poppins',
@@ -241,11 +301,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   height: 0.83, // 10px line height / 12px font size
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              SizedBox(height: 6),
                               Text(
                                 'You Saved',
                                 style: TextStyle(
-                                  color: const Color(0xFF1C5B8D),
+                                  color: Color(0xFF1C5B8D),
                                   fontSize: 17,
                                   fontWeight: FontWeight.w500,
                                   fontFamily: 'Poppins',
@@ -261,7 +321,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               Text(
                                 '18%',
                                 style: TextStyle(
-                                  color: const Color(0xFF1C5B8D),
+                                  color: Color(0xFF1C5B8D),
                                   fontSize: 47,
                                   fontWeight: FontWeight.w500,
                                   fontFamily: 'Poppins',
@@ -269,11 +329,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   height: 1, // leading-none
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4),
                               Text(
                                 '870.9 gallons',
                                 style: TextStyle(
-                                  color: const Color(0xFF384144),
+                                  color: Color(0xFF384144),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w400,
                                   fontFamily: 'Poppins',
@@ -288,7 +348,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                   ),
                   // Right side - AGOS Blue Logo
-                  Container(
+                  SizedBox(
                     width: 135,
                     height: 135,
                     child: SvgPicture.asset(
@@ -307,7 +367,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildWaterTankCard(TankData tankData) {
+  Widget _buildWaterTankCard(TankData tankData, UserThresholds thresholds,
+      {bool isLive = false, DateTime? lastData}) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -349,14 +410,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Main Water Tank',
                       style: TextStyle(
-                        color: const Color(0xFF2C3E50),
+                        color: Color(0xFF2C3E50),
                         fontSize: 18,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Poppins',
@@ -365,7 +426,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     Text(
                       'Real-time monitoring',
                       style: TextStyle(
-                        color: const Color(0xFF7F8C8D),
+                        color: Color(0xFF7F8C8D),
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Poppins',
@@ -380,13 +441,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
-                    color: const Color(0xFF009966),
+                    color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                     width: 0.8,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF009966).withValues(alpha: 0.32),
+                      color: (isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E))
+                          .withValues(alpha: 0.32),
                       blurRadius: 11,
                       offset: const Offset(0, 0),
                     ),
@@ -399,20 +461,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       width: 12,	
                       height: 12,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF009966),
+                        color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFF009966),
+                          color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                           width: 1.5,
                         ),
                         boxShadow: [
-                          // Outer green glow
                           BoxShadow(
-                            color: const Color(0xFF009966).withValues(alpha: 0.4),
+                            color: (isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E))
+                                .withValues(alpha: 0.4),
                             blurRadius: 6,
                             offset: const Offset(0, 0),
                           ),
-                          // Subtle shadow for depth
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 2,
@@ -423,9 +484,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Live',
+                      isLive ? 'Live' : 'Idle',
                       style: TextStyle(
-                        color: const Color(0xFF009966),
+                        color: isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E),
                         fontSize: 12,
                         fontWeight: FontWeight.w400,
                         fontFamily: 'Inter',
@@ -446,7 +507,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               const SizedBox(width: 25),
               // Tank data
               Expanded(
-                child: _buildTankData(tankData),
+                child: _buildTankData(tankData, thresholds),
               ),
             ],
           ),
@@ -470,10 +531,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              const Text(
                 'Flow Rate',
                 style: TextStyle(
-                  color: const Color(0xFF7F8C8D),
+                  color: Color(0xFF7F8C8D),
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
                   fontFamily: 'Inter',
@@ -498,8 +559,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   const SizedBox(width: 8),
                   Text(
                     '${tankData.flowRate.toStringAsFixed(1)} L/min',
-                    style: TextStyle(
-                      color: const Color(0xFF00D3F2),
+                    style: const TextStyle(
+                      color: Color(0xFF00D3F2),
                       fontSize: 14,
                       fontWeight: FontWeight.w400,
                       fontFamily: 'Inter',
@@ -667,7 +728,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildTankData(TankData tankData) {
+  Widget _buildTankData(TankData tankData, UserThresholds thresholds) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -691,10 +752,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
             ),
             const SizedBox(height: 4),
-            Text(
+            const Text(
               'Current Level',
               style: TextStyle(
-                color: const Color(0xFF7F8C8D),
+                color: Color(0xFF7F8C8D),
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
                 fontFamily: 'Poppins',
@@ -734,11 +795,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           final Color statusColor;
           final Color dotColor;
           final String statusLabel;
-          if (tankData.level >= 70) {
+          if (tankData.level >= thresholds.levelHigh) {
             statusColor = const Color(0xFF00C851);
             dotColor = const Color(0xFF00C851);
             statusLabel = 'Optimal Level';
-          } else if (tankData.level >= 40) {
+          } else if (tankData.level > thresholds.levelMin) {
             statusColor = const Color(0xFFFDC700);
             dotColor = const Color(0xFFFDC700);
             statusLabel = 'Moderate Level';
@@ -747,38 +808,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             dotColor = const Color(0xFFFF6B6B);
             statusLabel = 'Low Level';
           }
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              border: Border.all(
-                color: statusColor.withValues(alpha: 0.3),
-                width: 0.8,
+          return FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.1),
+                border: Border.all(
+                  color: statusColor.withValues(alpha: 0.3),
+                  width: 0.8,
+                ),
+                borderRadius: BorderRadius.circular(16),
               ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: dotColor,
-                    shape: BoxShape.circle,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  statusLabel,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    fontFamily: 'Inter',
+                  const SizedBox(width: 6),
+                  Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      fontFamily: 'Inter',
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         }),
@@ -792,8 +857,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       children: [
         Text(
           label,
-          style: TextStyle(
-            color: const Color(0xFF7F8C8D),
+          style: const TextStyle(
+            color: Color(0xFF7F8C8D),
             fontSize: 14,
             fontWeight: FontWeight.w400,
             fontFamily: 'Poppins',
@@ -801,8 +866,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         ),
         Text(
           value,
-          style: TextStyle(
-            color: const Color(0xFF00D3F2),
+          style: const TextStyle(
+            color: Color(0xFF00D3F2),
             fontSize: 14,
             fontWeight: FontWeight.w400,
             fontFamily: 'Poppins',
@@ -812,8 +877,422 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildBottomLogo() {
+  // ─── Pump Control Card ───────────────────────────────────────────────────
+
+  void _startPumpTimer(int durationSeconds) {
+    _pumpCountdownTimer?.cancel();
+    setState(() {
+      _pumpManualOn = true;
+      _pumpRemainingSeconds = durationSeconds;
+    });
+    _pumpCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_pumpRemainingSeconds > 0) {
+          _pumpRemainingSeconds--;
+        } else {
+          // Timer expired → send off command and reset to auto mode
+          _stopPump(expired: true);
+          timer.cancel();
+        }
+      });
+    });
+
+    // Send pump ON command with duration
+    try {
+      ref.read(webSocketServiceProvider).sendPumpCommand(
+        on: true,
+        durationSeconds: durationSeconds,
+      );
+    } catch (_) {}
+  }
+
+  void _stopPump({bool expired = false}) {
+    _pumpCountdownTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _pumpManualOn = false;
+        _pumpRemainingSeconds = 0;
+      });
+    }
+    // Send pump OFF command
+    try {
+      ref.read(webSocketServiceProvider).sendPumpCommand(on: false);
+    } catch (_) {}
+  }
+
+  String _formatCountdown(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildPumpCard() {
+    final durations = [5, 10, 15, 30]; // minutes
+
     return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──────────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
+                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
+                    ],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.water_outlined,
+                  color: Color(0xFF00D3F2),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pump Control',
+                      style: TextStyle(
+                        color: Color(0xFF2C3E50),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    Text(
+                      'Manual pump operation',
+                      style: TextStyle(
+                        color: Color(0xFF7F8C8D),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Status badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(
+                    color: _pumpManualOn
+                        ? const Color(0xFF00B8DB)
+                        : const Color(0xFF7F8C8D),
+                    width: 0.8,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: _pumpManualOn
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF00B8DB).withValues(alpha: 0.32),
+                            blurRadius: 11,
+                            offset: const Offset(0, 0),
+                          ),
+                        ]
+                      : [],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: _pumpManualOn
+                            ? const Color(0xFF00B8DB)
+                            : const Color(0xFF7F8C8D),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _pumpManualOn ? 'Manual' : 'Auto',
+                      style: TextStyle(
+                        color: _pumpManualOn
+                            ? const Color(0xFF00B8DB)
+                            : const Color(0xFF7F8C8D),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // ── Divider ─────────────────────────────────────────────
+          Container(
+            margin: const EdgeInsets.only(top: 16, bottom: 16),
+            height: 0.8,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Colors.transparent,
+                  const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+
+          // ── Status / Countdown area ──────────────────────────────
+          if (_pumpManualOn) ...[
+            Center(
+              child: Column(
+                children: [
+                  const Text(
+                    'Pump Running',
+                    style: TextStyle(
+                      color: Color(0xFF00B8DB),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'Poppins',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Countdown ring
+                  SizedBox(
+                    width: 90,
+                    height: 90,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Arc that drains as time passes
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(
+                            begin: 1.0,
+                            end: _selectedPumpDuration * 60 > 0
+                                ? _pumpRemainingSeconds /
+                                    (_selectedPumpDuration * 60)
+                                : 0.0,
+                          ),
+                          duration: const Duration(seconds: 1),
+                          builder: (context, value, _) {
+                            return CustomPaint(
+                              size: const Size(90, 90),
+                              painter: _ArcPainter(value),
+                            );
+                          },
+                        ),
+                        Text(
+                          _formatCountdown(_pumpRemainingSeconds),
+                          style: const TextStyle(
+                            color: Color(0xFF2C3E50),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Time remaining',
+                    style: TextStyle(
+                      color: Color(0xFF7F8C8D),
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            // ── Duration selector ──────────────────────────────────
+            const Text(
+              'Duration',
+              style: TextStyle(
+                color: Color(0xFF7F8C8D),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                fontFamily: 'Inter',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: durations.map((mins) {
+                final selected = _selectedPumpDuration == mins;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedPumpDuration = mins),
+                    child: Container(
+                      margin: EdgeInsets.only(
+                        right: mins != durations.last ? 8 : 0,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF00B8DB).withValues(alpha: 0.1)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF00B8DB)
+                              : const Color(0xFFDDE3E9),
+                          width: selected ? 1.5 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${mins}m',
+                          style: TextStyle(
+                            color: selected
+                                ? const Color(0xFF00B8DB)
+                                : const Color(0xFF7F8C8D),
+                            fontSize: 14,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // ── Action button ────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: GestureDetector(
+              onTap: () {
+                if (_pumpManualOn) {
+                  _stopPump();
+                } else {
+                  _startPumpTimer(_selectedPumpDuration * 60);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: _pumpManualOn
+                      ? null
+                      : const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)],
+                        ),
+                  color: _pumpManualOn ? const Color(0xFFFFEEEE) : null,
+                  border: _pumpManualOn
+                      ? Border.all(
+                          color: const Color(0xFFFF6B6B).withValues(alpha: 0.5),
+                          width: 1,
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: _pumpManualOn
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: const Color(0xFF00B8DB).withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _pumpManualOn
+                            ? Icons.stop_circle_outlined
+                            : Icons.play_circle_outline,
+                        color: _pumpManualOn
+                            ? const Color(0xFFFF6B6B)
+                            : Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _pumpManualOn ? 'Stop Pump' : 'Turn On Pump',
+                        style: TextStyle(
+                          color: _pumpManualOn
+                              ? const Color(0xFFFF6B6B)
+                              : Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Info note ────────────────────────────────────────────
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: const Color(0xFF7F8C8D).withValues(alpha: 0.7),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _pumpManualOn
+                      ? 'Pump will return to auto mode when timer ends.'
+                      : 'Pump runs automatically based on sensor data. Use manual mode to clean the holding tank.',
+                  style: TextStyle(
+                    color: const Color(0xFF7F8C8D).withValues(alpha: 0.8),
+                    fontSize: 11,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomLogo() {
+    return SizedBox(
       width: 45,
       height: 23.2,
       child: SvgPicture.asset(
@@ -897,4 +1376,48 @@ class WaterWavePainter extends CustomPainter {
   bool shouldRepaint(covariant WaterWavePainter oldDelegate) {
     return oldDelegate.animationValue != animationValue;
   }
+}
+
+// ── Pump Countdown Arc Painter ─────────────────────────────────────────────
+
+class _ArcPainter extends CustomPainter {
+  final double progress; // 1.0 = full, 0.0 = empty
+
+  _ArcPainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final radius = (size.width < size.height ? size.width : size.height) / 2 - 6;
+
+    // Background track
+    final trackPaint = Paint()
+      ..color = const Color(0xFF00B8DB).withValues(alpha: 0.12)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(Offset(cx, cy), radius, trackPaint);
+
+    // Progress arc
+    if (progress > 0) {
+      final arcPaint = Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)],
+        ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: radius))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(cx, cy), radius: radius),
+        -math.pi / 2,
+        2 * math.pi * progress,
+        false,
+        arcPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ArcPainter old) => old.progress != progress;
 }

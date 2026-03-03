@@ -1,7 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import '../../presentation/screens/splash/splash_screen.dart';
 import '../../presentation/screens/welcome/welcome_screen.dart';
-import '../../presentation/screens/connection/connection_method_screen.dart';
+import '../../presentation/screens/auth/login_screen.dart';
+import '../../presentation/screens/auth/register_screen.dart';
+import '../../presentation/screens/auth/forgot_password_screen.dart';
+import '../../presentation/screens/connection/device_setup_intro_screen.dart';
 import '../../presentation/screens/connection/wifi_setup_screen.dart';
 import '../../presentation/screens/connection/bluetooth_setup1_screen.dart';
 import '../../presentation/screens/connection/bluetooth_setup2_screen.dart';
@@ -31,8 +34,15 @@ class AppRouter {
         return _buildRoute(const SplashScreen());
       case '/welcome':
         return _buildRoute(const WelcomeScreen());
+      case '/login':
+        return _buildRoute(const LoginScreen());
+      case '/register':
+        return _buildRoute(const RegisterScreen());
+      case '/forgot-password':
+        return _buildRoute(const ForgotPasswordScreen());
       case '/connection-method':
-        return _buildRouteNoTransition(const ConnectionMethodScreen());
+      case '/device-setup-intro':
+        return _buildRouteNoTransition(const DeviceSetupIntroScreen());
       case '/wifi-setup':
         return _buildRouteNoTransition(const WifiSetupScreen());
       case '/bluetooth-setup-1':

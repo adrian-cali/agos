@@ -201,7 +201,7 @@ class WelcomeScreen extends StatelessWidget {
                   GestureDetector(
                     onTap: () {
                       Navigator.pushReplacementNamed(
-                          context, '/connection-method');
+                          context, '/device-setup-intro');
                     },
                     child: Container(
                       width: double.infinity,
@@ -235,6 +235,40 @@ class WelcomeScreen extends StatelessWidget {
                             size: 16,
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // "Go back to Log in Page" link
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pushReplacementNamed(context, '/login');
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: const TextSpan(
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xFF62748E),
+                          ),
+                          children: [
+                            TextSpan(text: "Go back to "),
+                            TextSpan(
+                              text: 'Log in Page',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF155DFC),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
