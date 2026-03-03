@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
@@ -24,6 +25,7 @@ class LocalNotificationService {
   static const _channelDesc = 'Water monitoring system alerts and warnings';
 
   Future<void> init() async {
+    if (kIsWeb) return; // flutter_local_notifications not supported on web
     if (_initialized) return;
 
     // Initialise timezone database
@@ -61,6 +63,7 @@ class LocalNotificationService {
 
   /// Request notification permission (Android 13+ / iOS).
   Future<void> requestPermission() async {
+    if (kIsWeb) return; // not supported on web
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
@@ -72,6 +75,7 @@ class LocalNotificationService {
     required String title,
     required String body,
   }) async {
+    if (kIsWeb) return;
     if (!_initialized) await init();
 
     const androidDetails = AndroidNotificationDetails(
@@ -98,6 +102,7 @@ class LocalNotificationService {
 
   /// Convenience: show an ESP32 offline notification.
   Future<void> showEsp32Offline() async {
+    if (kIsWeb) return;
     if (!_initialized) await init();
 
     const androidDetails = AndroidNotificationDetails(
@@ -139,6 +144,7 @@ class LocalNotificationService {
     required String body,
     Color color = const Color(0xFF00D3F2), // default: turbidity cyan
   }) async {
+    if (kIsWeb) return;
     if (!_initialized) await init();
 
     final androidDetails = AndroidNotificationDetails(
@@ -167,6 +173,7 @@ class LocalNotificationService {
 
   /// Show a filter cleaning reminder notification.
   Future<void> showFilterReminder() async {
+    if (kIsWeb) return;
     if (!_initialized) await init();
 
     const androidDetails = AndroidNotificationDetails(
@@ -210,6 +217,7 @@ class LocalNotificationService {
     int minute = 0,
     String? localTimeZone,
   }) async {
+    if (kIsWeb) return;
     if (!_initialized) await init();
 
     // Cancel any existing filter reminder first
@@ -295,6 +303,7 @@ class LocalNotificationService {
 
   /// Cancel any pending filter cleaning reminder.
   Future<void> cancelFilterReminder() async {
+    if (kIsWeb) return;
     if (!_initialized) await init();
     await _plugin.cancel(3001);
   }

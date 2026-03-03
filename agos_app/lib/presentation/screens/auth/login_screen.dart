@@ -42,6 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Returns true if Google Sign-In is supported on the current platform.
   bool get _googleSignInSupported =>
+      kIsWeb ||
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -49,19 +50,25 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_googleSignInSupported) return;
     setState(() => _googleLoading = true);
     try {
-      // Sign out first to force the account picker to appear every time
-      await GoogleSignIn().signOut();
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        setState(() => _googleLoading = false);
-        return; // user cancelled
+      if (kIsWeb) {
+        // Web: use Firebase popup flow
+        final provider = GoogleAuthProvider();
+        await FirebaseAuth.instance.signInWithPopup(provider);
+      } else {
+        // Mobile: use google_sign_in package
+        await GoogleSignIn().signOut();
+        final googleUser = await GoogleSignIn().signIn();
+        if (googleUser == null) {
+          setState(() => _googleLoading = false);
+          return; // user cancelled
+        }
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        await FirebaseAuth.instance.signInWithCredential(credential);
       }
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      await FirebaseAuth.instance.signInWithCredential(credential);
       if (!mounted) return;
       final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
       await _navigateAfterLogin(uid);

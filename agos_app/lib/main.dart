@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -11,11 +12,13 @@ import 'presentation/screens/splash/splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Initialise local OS notifications (also initialises timezone data)
-  await LocalNotificationService().init();
-  await LocalNotificationService().requestPermission();
-  // Ensure the filter cleaning reminder is scheduled
-  await _ensureFilterReminderScheduled();
+  if (!kIsWeb) {
+    // flutter_local_notifications is not supported on web
+    await LocalNotificationService().init();
+    await LocalNotificationService().requestPermission();
+    // Ensure the filter cleaning reminder is scheduled
+    await _ensureFilterReminderScheduled();
+  }
   runApp(const ProviderScope(child: AgosApp()));
 }
 

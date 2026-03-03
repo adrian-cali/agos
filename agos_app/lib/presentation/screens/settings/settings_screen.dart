@@ -1,4 +1,5 @@
 import 'package:agos_app/core/constants/app_colors.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -868,8 +869,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              // Also sign out of Google so next sign-in shows the account picker
-              await GoogleSignIn().signOut();
+              // GoogleSignIn().signOut() is not supported on web — skip it there
+              if (!kIsWeb) {
+                try {
+                  await GoogleSignIn().signOut();
+                } catch (_) {}
+              }
               await FirebaseAuth.instance.signOut();
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(

@@ -46,6 +46,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   /// Returns true if Google Sign-In is supported on the current platform.
   bool get _googleSignInSupported =>
+      kIsWeb ||
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -53,20 +54,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!_googleSignInSupported) return;
     setState(() => _googleLoading = true);
     try {
-      // Sign out first to force account picker
-      await GoogleSignIn().signOut();
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        setState(() => _googleLoading = false);
-        return; // user cancelled
+      UserCredential userCred;
+      if (kIsWeb) {
+        // Web: use Firebase popup flow
+        final provider = GoogleAuthProvider();
+        userCred = await FirebaseAuth.instance.signInWithPopup(provider);
+      } else {
+        // Mobile: use google_sign_in package
+        await GoogleSignIn().signOut();
+        final googleUser = await GoogleSignIn().signIn();
+        if (googleUser == null) {
+          setState(() => _googleLoading = false);
+          return; // user cancelled
+        }
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        userCred = await FirebaseAuth.instance.signInWithCredential(credential);
       }
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      final userCred =
-          await FirebaseAuth.instance.signInWithCredential(credential);
       // If this is a new user, create their Firestore profile
       if (userCred.additionalUserInfo?.isNewUser == true) {
         final user = userCred.user!;
@@ -74,7 +81,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             .collection('users')
             .doc(user.uid)
             .set({
-          'name': user.displayName ?? googleUser.displayName ?? '',
+          'name': user.displayName ?? '',
           'email': user.email ?? '',
           'created_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));

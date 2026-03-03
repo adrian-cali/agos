@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/firestore_service.dart';
@@ -232,11 +232,10 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
       };
 
       final json = const JsonEncoder.withIndent('  ').convert(export);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/agos_my_data.json');
-      await file.writeAsString(json);
+      // Use XFile.fromData on all platforms to avoid dart:io dependency
+      final bytes = Uint8List.fromList(utf8.encode(json));
       await Share.shareXFiles(
-        [XFile(file.path)],
+        [XFile.fromData(bytes, name: 'agos_my_data.json', mimeType: 'application/json')],
         subject: 'My AGOS Data Export',
         text: 'AGOS export — ${readings.length} readings.',
       );
@@ -296,10 +295,16 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
             .delete();
       }
 
-      // Sign out Google cache if applicable
-      final isGoogleUser =
-          user.providerData.any((p) => p.providerId == 'google.com');
-      if (isGoogleUser) await GoogleSignIn().signOut();
+      // Sign out Google cache if applicable (not supported on web)
+      if (!kIsWeb) {
+        final isGoogleUser =
+            user.providerData.any((p) => p.providerId == 'google.com');
+        if (isGoogleUser) {
+          try {
+            await GoogleSignIn().signOut();
+          } catch (_) {}
+        }
+      }
 
       // Delete Firebase Auth account
       await user.delete();

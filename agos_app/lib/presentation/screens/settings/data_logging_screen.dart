@@ -1,8 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -84,11 +83,11 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         buf.writeln(
             '${r.timestamp.toIso8601String()},${r.deviceId},${r.turbidity},${r.ph},${r.tds},${r.level},${r.volume},${r.flowRate},${r.pumpActive}');
       }
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/agos_export.csv');
-      await file.writeAsString(buf.toString());
-      await Share.shareXFiles([XFile(file.path)],
-          subject: 'AGOS Sensor Data Export');
+      final csvBytes = Uint8List.fromList(utf8.encode(buf.toString()));
+      await Share.shareXFiles(
+        [XFile.fromData(csvBytes, name: 'agos_export.csv', mimeType: 'text/csv')],
+        subject: 'AGOS Sensor Data Export',
+      );
     } catch (e) {
       _snack('Export failed: $e');
     } finally {
@@ -118,11 +117,11 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
               })
           .toList();
       final json = const JsonEncoder.withIndent('  ').convert(list);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/agos_export.json');
-      await file.writeAsString(json);
-      await Share.shareXFiles([XFile(file.path)],
-          subject: 'AGOS Sensor Data Export (JSON)');
+      final jsonBytes = Uint8List.fromList(utf8.encode(json));
+      await Share.shareXFiles(
+        [XFile.fromData(jsonBytes, name: 'agos_export.json', mimeType: 'application/json')],
+        subject: 'AGOS Sensor Data Export (JSON)',
+      );
     } catch (e) {
       _snack('Export failed: $e');
     } finally {

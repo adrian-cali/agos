@@ -21,8 +21,8 @@ class _DeviceSetupIntroScreenState extends State<DeviceSetupIntroScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
         _ble.simulationMode
-            ? '🧪 Simulation mode ON — fake devices & WiFi networks will be shown'
-            : '📡 Simulation mode OFF — using real hardware',
+            ? 'Simulation mode ON — fake devices & WiFi networks will be shown'
+            : 'Simulation mode OFF — using real hardware',
       ),
       duration: const Duration(seconds: 3),
     ));
