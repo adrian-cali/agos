@@ -4,7 +4,8 @@ import json
 import random
 from datetime import datetime
 
-WS_URL = "ws://localhost:8000/ws/sensor"
+WS_URL = "wss://agos-production.up.railway.app/ws/sensor"
+# WS_URL = "ws://localhost:8000/ws/sensor"  # uncomment for local dev
 DEVICE_ID = "agos-zksl9QK3"  # Adrian Calingasin's device ID (matches Firestore)
 
 # bad-water spike state
