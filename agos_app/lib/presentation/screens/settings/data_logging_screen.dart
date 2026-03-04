@@ -52,11 +52,9 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   Future<List<SensorReading>> _fetchReadings() async {
     final service = ref.read(firestoreServiceProvider);
-    // Cap at 7 days to stay within Firestore free-tier read limits.
-    // Upgrade to Blaze plan or reduce retention to export more.
-    const int maxExportDays = 7;
-    final exportDays = _retentionDays.clamp(1, maxExportDays);
-    return service.fetchReadings(_deviceId, days: exportDays);
+    // Use the full retention period (no artificial cap).
+    // fetchReadings paginates automatically so large datasets are handled.
+    return service.fetchReadings(_deviceId, days: _retentionDays);
   }
 
   Future<void> _exportCsv() async {

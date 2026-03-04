@@ -191,19 +191,38 @@ class FirestoreService {
 
   /// One-shot fetch of sensor readings for a device within a time window.
   /// [days] and [hours] are added together to form the lookback window.
+  /// Paginates automatically to return all matching documents.
   /// Uses composite index: device_id ASC + timestamp ASC.
   Future<List<SensorReading>> fetchReadings(String deviceId,
       {int days = 30, int hours = 0}) async {
     final cutoff = DateTime.now().subtract(Duration(days: days, hours: hours));
+    const int pageSize = 1000;
+    final List<SensorReading> all = [];
+    DocumentSnapshot? lastDoc;
+
     try {
-      final snap = await _db
-          .collection('sensor_readings')
-          .where('device_id', isEqualTo: deviceId)
-          .where('timestamp',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
-          .orderBy('timestamp')
-          .get();
-      return snap.docs.map(SensorReading.fromFirestore).toList();
+      while (true) {
+        var query = _db
+            .collection('sensor_readings')
+            .where('device_id', isEqualTo: deviceId)
+            .where('timestamp',
+                isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+            .orderBy('timestamp')
+            .limit(pageSize);
+
+        if (lastDoc != null) {
+          query = query.startAfterDocument(lastDoc);
+        }
+
+        final snap = await query.get();
+        if (snap.docs.isEmpty) break;
+
+        all.addAll(snap.docs.map(SensorReading.fromFirestore));
+        if (snap.docs.length < pageSize) break; // last page
+
+        lastDoc = snap.docs.last;
+      }
+      return all;
     } catch (e, st) {
       debugPrint('[fetchReadings] ERROR: $e\n$st');
       rethrow;
