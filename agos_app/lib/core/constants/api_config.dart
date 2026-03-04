@@ -3,7 +3,7 @@ class ApiConfig {
 
   // ─── PRODUCTION URL ───────────────────────────────────────────────────────
   // Set this to your deployed backend URL for production / demo builds.
-  // Example: 'https://agos-backend.up.railway.app'
+  // Example: 'https://agos-wchk.onrender.com'
   // Leave empty ('') to fall back to the local dev server (localhost:8000).
   static const String _productionUrl = 'https://agos-wchk.onrender.com';
   // ──────────────────────────────────────────────────────────────────────────

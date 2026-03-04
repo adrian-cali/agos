@@ -46,7 +46,7 @@ else:
 app = FastAPI(title="AGOS WebSocket Server", version="1.0.0")
 
 # ============= REDIS CACHE (optional) =============
-# If REDIS_URL is set (Railway Redis add-on), state snapshots are persisted
+# If REDIS_URL is set (Render Key Value / any Redis URL), state snapshots are persisted
 # every REDIS_SNAPSHOT_INTERVAL_S seconds so restarts restore previous values.
 # If Redis is unavailable or unconfigured, the app runs identically without it.
 
