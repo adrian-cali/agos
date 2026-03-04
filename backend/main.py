@@ -680,6 +680,14 @@ async def root():
     }
 
 
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "sensor_connected": state["sensor_connected"]
+    }
+
+
 @app.post("/devices/register")
 async def register_device(payload: dict):
     """Register a new AGOS device (called from Flutter after pairing)."""
