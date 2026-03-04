@@ -665,25 +665,29 @@ The ESP32 firmware must implement:
 
 ## 14. Deployment (Backend)
 
-### Railway (recommended free tier)
+### Render (free tier — no credit card required)
 
-1. Push the `backend/` folder to a GitHub repository
-2. Go to https://railway.app - New Project - Deploy from GitHub
-3. Set the **Start Command** to:
-   ```
-   python -m uvicorn main:app --host 0.0.0.0 --port $PORT
-   ```
-4. Add environment variable: `PORT=8000` (Railway sets `$PORT` automatically)
-5. Upload `serviceAccountKey.json` content as an environment variable (recommended) or use Railway's file storage
-6. After deploy, copy the public URL (e.g. `https://agos-backend.up.railway.app`)
-7. Set in `api_config.dart`:
+1. Push to your GitHub repository (`main` branch)
+2. Go to https://dashboard.render.com → **New Web Service**
+3. Connect your GitHub repo, branch: `main`
+4. Render auto-detects `render.yaml` — settings are pre-filled:
+   - **Root Directory:** `backend`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+5. Add environment variable:
+   - Key: `FIREBASE_SERVICE_ACCOUNT_JSON`
+   - Value: full contents of your Firebase service account JSON
+6. (Optional) Add a Key Value (Redis) instance and set `REDIS_URL` for state caching
+7. After deploy, copy the public URL (e.g. `https://agos-wchk.onrender.com`)
+8. Set in `api_config.dart`:
    ```dart
-   static const String _productionUrl = 'https://agos-backend.up.railway.app';
+   static const String _productionUrl = 'https://agos-wchk.onrender.com';
    ```
+9. Set up [UptimeRobot](https://uptimerobot.com) (free) to ping `/health` every 5 min to keep the service awake
 
-### Alternative: Render / Fly.io / VPS
+### Alternative: Any Platform with Python + Public HTTPS/WSS URL
 
-Same process - any platform that runs Python and exposes a public HTTPS/WSS URL will work.
+Same process — Fly.io, VPS, etc. will work.
 
 > **Note:** WebSocket connections over `wss://` are required for production. The app automatically upgrades `https://` to `wss://` for WebSocket URLs.
 

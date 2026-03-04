@@ -1,5 +1,5 @@
 # AGOS Deployment Guide
-## Complete Free Deployment: Frontend (Flutter) + Backend (Railway) + Hardware (ESP32)
+## Complete Free Deployment: Frontend (Flutter) + Backend (Render) + Hardware (ESP32)
 
 ---
 
@@ -9,7 +9,7 @@
 |-----------|--------------|------|
 | **Flutter App (Android)** | APK — sideload or Play Store | Free |
 | **Flutter App (Web / iOS PWA)** | Firebase Hosting or GitHub Pages | **Free** — iOS users open URL → Add to Home Screen |
-| **FastAPI Backend** | Railway cloud | **Free** (uses $5 free credit, actual cost ~$0.05/month) |
+| **FastAPI Backend** | Render cloud | **Free** ($0/month, no credit card, 750 hrs/month) |
 | **Firebase Auth** | Google Firebase cloud | **Free** (Spark plan, no card needed) |
 | **Firestore Database** | Google Firebase cloud | **Free** (14,400 writes/day — well under 20,000 free limit) |
 | **ESP32 Hardware** | Physical device (on-site) | One-time hardware cost only |
@@ -21,11 +21,11 @@
 ```
 ESP32 Hardware (on-site WiFi)
   │
-  │  WebSocket (wss://your-app.up.railway.app/ws/sensor)
+  │  WebSocket (wss://agos-wchk.onrender.com/ws/sensor)
   ▼
-Railway Cloud Server  ──── Firebase Admin SDK ────► Firestore (cloud database)
+Render Cloud Server  ──── Firebase Admin SDK ────► Firestore (cloud database)
   │
-  │  WebSocket (wss://your-app.up.railway.app/ws/app)
+  │  WebSocket (wss://agos-wchk.onrender.com/ws/app)
   ▼
 Flutter App
   ├── Android  →  APK install (sideload / Play Store)
@@ -33,7 +33,7 @@ Flutter App
   └── Browser  →  Any device, open URL directly
   │
   ├── Firebase Auth SDK (login/session)
-  └── WebSocket (real-time data stream from Railway)
+  └── WebSocket (real-time data stream from Render)
 ```
 
 ---
@@ -56,7 +56,7 @@ Firebase is used for **authentication only** in the current architecture. Firest
 | Firebase Auth | 10,000 users/month | <100 users ✅ |
 | FCM Push notifications | Free | ✅ |
 
-### Get your serviceAccountKey.json (needed for Railway):
+### Get your serviceAccountKey.json (needed for Render):
 1. Firebase Console → Project Settings → **Service Accounts** tab
 2. Click **Generate new private key**
 3. Save the JSON file — **keep it secret, never commit to git**
@@ -64,7 +64,7 @@ Firebase is used for **authentication only** in the current architecture. Firest
 
 ---
 
-## Part 2 — Backend Deployment to Railway
+## Part 2 — Backend Deployment to Render
 
 ### Step 1: Prepare the backend files
 
@@ -80,7 +80,7 @@ _SERVICE_ACCOUNT_PATH = os.path.join(os.path.dirname(__file__), "serviceAccountK
 _SERVICE_ACCOUNT_ENV = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
 
 if _SERVICE_ACCOUNT_ENV:
-    # Railway/production: credentials from environment variable
+    # Render/production: credentials from environment variable
     try:
         sa_info = json.loads(_SERVICE_ACCOUNT_ENV)
         cred = credentials.Certificate(sa_info)
@@ -130,7 +130,7 @@ firebase-admin>=6.4.0
 ```bash
 # From your agos/ directory
 git add backend/
-git commit -m "feat: prepare backend for Railway deployment"
+git commit -m "feat: prepare backend for Render deployment"
 git push origin main
 ```
 
@@ -143,35 +143,44 @@ agos-prod-firebase-adminsdk-*.json
 *.json  # (if you have this already)
 ```
 
-### Step 3: Deploy to Railway
+### Step 3: Deploy to Render
 
-1. Go to [railway.app](https://railway.app) → **Login with GitHub**
-2. Click **New Project** → **Deploy from GitHub repo**
-3. Select your `agos` repository
-4. Railway will detect the code — when asked for the root directory, set it to **`backend`**
-5. Railway auto-detects Python with the `Procfile`
+1. Go to [dashboard.render.com](https://dashboard.render.com) → **Login with GitHub**
+2. Click **+ New** → **Web Service**
+3. Connect your `agos` repository, branch: `main`
+4. Render auto-detects `render.yaml` — settings are pre-filled:
+   - **Root Directory:** `backend`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+5. Click **Create Web Service**
 
-### Step 4: Set environment variables on Railway
+### Step 4: Set environment variables on Render
 
-In your Railway project dashboard:
-1. Click your service → **Variables** tab
+In your Render dashboard:
+1. Click your service → **Environment** tab
 2. Add variable:
-   - **Name:** `FIREBASE_SERVICE_ACCOUNT_JSON`
+   - **Key:** `FIREBASE_SERVICE_ACCOUNT_JSON`
    - **Value:** Paste the **entire contents** of your `serviceAccountKey.json` file (the whole JSON)
-3. Click **Save** — Railway will redeploy automatically
+3. Click **Save Changes** — Render will redeploy automatically
+4. (Optional) Create a free **Key Value** (Redis) instance and add `REDIS_URL` for state caching
 
-### Step 5: Get your Railway domain
+### Step 5: Get your Render URL
 
-1. In Railway dashboard → your service → **Settings** tab
-2. Under **Domains** → click **Generate Domain**
-3. You'll get something like: `agos-backend-production.up.railway.app`
-4. **Copy this domain — you need it for the Flutter app**
+1. In Render dashboard → your service → **Overview** tab
+2. Copy the public URL shown at the top (e.g. `https://agos-wchk.onrender.com`)
+3. **Copy this URL — you need it for the Flutter app**
+
+### Step 5.5: Set up UptimeRobot (keeps Render awake 24/7)
+
+1. Go to [uptimerobot.com](https://uptimerobot.com) → sign up free (no CC)
+2. Add Monitor → HTTP(s) → URL: `https://your-render-url.onrender.com/health`
+3. Interval: 5 minutes → Create
 
 ### Step 6: Verify backend is running
 
 Open in browser:
 ```
-https://your-app.up.railway.app/
+https://your-render-url.onrender.com/health
 ```
 
 You should see:
@@ -200,8 +209,8 @@ class ApiConfig {
   // ── Toggle this flag for local vs production ──────────────────────────────
   static const bool _useProduction = true; // ← set false for local development
 
-  // ── Production (Railway) ──────────────────────────────────────────────────
-  static const String _productionHost = 'your-app.up.railway.app'; // ← replace with your Railway domain
+  // ── Production (Render) ───────────────────────────────────────────────────
+  static const String _productionHost = 'your-app.onrender.com'; // ← replace with your Render URL
   static const bool _productionSecure = true; // uses wss:// and https://
 
   // ── Local development ─────────────────────────────────────────────────────
@@ -233,7 +242,7 @@ class ApiConfig {
 }
 ```
 
-> Replace `your-app.up.railway.app` with your actual Railway domain from Step 5 above.
+> Replace `your-app.onrender.com` with your actual Render URL from Step 5 above.
 
 ### Build release APK (Android)
 
@@ -442,20 +451,20 @@ flutter build web --release --base-href "/agos/"
 
 ### What the ESP32 needs to do
 
-Connect to WiFi → establish a WebSocket connection to your Railway backend → send sensor data every 5 seconds.
+Connect to WiFi → establish a WebSocket connection to your Render backend → send sensor data every 5 seconds.
 
 ### Arduino/ESP32 code WebSocket connection
 
-Update your ESP32 firmware to point to the Railway URL:
+Update your ESP32 firmware to point to the Render URL:
 
 ```cpp
 // In your ESP32 WebSocket connection code
-const char* ws_host = "your-app.up.railway.app";  // ← your Railway domain
-const int ws_port = 443;                            // HTTPS/WSS port
+const char* ws_host = "agos-wchk.onrender.com";  // ← your Render URL
+const int ws_port = 443;                           // HTTPS/WSS port
 const char* ws_path = "/ws/sensor";
-const char* device_id = "agos-zksl9QK3";           // ← your device ID
+const char* device_id = "agos-zksl9QK3";          // ← your device ID
 
-// Use wss:// (secure WebSocket) since Railway requires HTTPS
+// Use wss:// (secure WebSocket) since Render requires HTTPS
 // Arduino WebSocket library: use WebSocketsClient with SSL
 client.beginSSL(ws_host, ws_port, ws_path);
 ```
@@ -504,14 +513,14 @@ During development when you don't have the physical device:
 
 ```bash
 # Update WS_URL in esp32_simulator_ws.py first:
-WS_URL = "wss://your-app.up.railway.app/ws/sensor"
+WS_URL = "wss://agos-wchk.onrender.com/ws/sensor"
 
 # Then run:
 cd backend
 python esp32_simulator_ws.py
 ```
 
-> Note: For the simulator to connect to Railway over WSS, install the `websockets` Python package with SSL support (already in requirements.txt).
+> Note: For the simulator to connect to Render over WSS, install the `websockets` Python package with SSL support (already in requirements.txt).
 
 ---
 
@@ -525,7 +534,7 @@ Any time you change backend code:
 git add backend/
 git commit -m "fix: description of change"
 git push origin main
-# Railway auto-deploys in ~90 seconds. No other steps needed.
+# Render auto-deploys in ~2-3 minutes. No other steps needed.
 ```
 
 ### Updating the Flutter app
@@ -550,9 +559,9 @@ firebase deploy --only hosting
 # Changes are live immediately — iOS users who added to Home Screen just reload the app
 ```
 
-### Checking Railway logs
+### Checking Render logs
 
-In Railway dashboard → your service → **Deployments** tab → click latest deployment → **View Logs**
+In Render dashboard → your service → **Logs** tab in the left sidebar
 
 You'll see real-time FastAPI output including WebSocket connections and Firestore writes.
 
@@ -585,27 +594,27 @@ DEVICE_UPDATE_INTERVAL_S = 60     # 1 device update per 60s
 ## Part 7 — Troubleshooting
 
 ### App can't connect to backend
-- Verify Railway deployment is live: `https://your-app.up.railway.app/`
-- Check `api_config.dart` has `_useProduction = true` and correct Railway domain
+- Verify Render deployment is live: `https://your-render-url.onrender.com/health`
+- Check `api_config.dart` has `_productionUrl` set to your Render URL
 - Rebuild and reinstall APK after changing `api_config.dart`
 
 ### Backend shows `firebase: false`
-- Check Railway environment variables — `FIREBASE_SERVICE_ACCOUNT_JSON` must be set
+- Check Render environment variables — `FIREBASE_SERVICE_ACCOUNT_JSON` must be set
 - Make sure you pasted the full JSON content (including `{ }`)
-- Check Railway deployment logs for Firebase initialization errors
+- Check Render deployment logs for Firebase initialization errors
 
-### ESP32 can't connect to Railway
-- Railway uses WSS (secure WebSocket on port 443) — make sure ESP32 uses SSL WebSocket client
-- Some ESP32 boards need the Railway server's SSL certificate — use `client.setInsecure()` for testing
+### ESP32 can't connect to Render
+- Render uses WSS (secure WebSocket on port 443) — make sure ESP32 uses SSL WebSocket client
+- Some ESP32 boards need the Render server's SSL certificate — use `client.setInsecure()` for testing
 
 ### Firestore writes failing
 - Check Firebase Console → Firestore → Rules tab
 - Ensure rules allow backend writes (backend uses Admin SDK so it bypasses client rules by default)
-- Check Railway logs for `[Firestore]` error lines
+- Check Render logs for `[Firestore]` error lines
 
-### Railway deployment failing
-- Check the build log in Railway dashboard
-- Most common issue: missing `Procfile` or wrong root directory setting
+### Render deployment failing
+- Check the build log in Render dashboard (Logs tab)
+- Most common issue: wrong Root Directory setting (must be `backend`)
 - Make sure `requirements.txt` is in the `backend/` folder
 
 ---
@@ -614,9 +623,10 @@ DEVICE_UPDATE_INTERVAL_S = 60     # 1 device update per 60s
 
 | Task | Command / Location |
 |------|--------------------|
-| View backend logs | Railway dashboard → your service → Deployments → View Logs |
+| View backend logs | Render dashboard → your service → Logs tab |
 | Check Firestore usage | Firebase Console → Firestore → Usage |
-| Check Railway credits | Railway dashboard → Account → Billing |
+| Check Render service | Render dashboard → your service → Overview |
+| Check UptimeRobot | UptimeRobot dashboard → Monitors |
 | Update backend | `git push origin main` (auto-deploys) |
 | Build flutter **APK** (Android) | `cd agos_app && flutter build apk --release` |
 | Build flutter **Web** | `cd agos_app && flutter build web --release` |
@@ -638,18 +648,19 @@ DEVICE_UPDATE_INTERVAL_S = 60     # 1 device update per 60s
 - [ ] `backend/main.py` updated to read credentials from environment variable
 - [ ] `backend/Procfile` created
 - [ ] Code pushed to GitHub
-- [ ] Railway account created (login with GitHub)
-- [ ] Railway project created from GitHub repo, root directory set to `backend/`
-- [ ] `FIREBASE_SERVICE_ACCOUNT_JSON` environment variable set on Railway
-- [ ] Railway domain noted (e.g. `agos-backend-production.up.railway.app`)
-- [ ] `api_config.dart` updated with Railway domain and `_useProduction = true`
+- [ ] Render account created (login with GitHub) at dashboard.render.com
+- [ ] Render Web Service created from GitHub repo `main` branch, root directory set to `backend/`
+- [ ] `FIREBASE_SERVICE_ACCOUNT_JSON` environment variable set on Render
+- [ ] Render URL noted (e.g. `https://agos-wchk.onrender.com`)
+- [ ] `api_config.dart` updated with Render URL
+- [ ] UptimeRobot monitor set up pinging `/health` every 5 minutes
 - [ ] Firebase Hosting initialized (`firebase init hosting` in `agos_app/`)
 - [ ] Firebase Hosting authorized domain added (e.g. `agos-prod.web.app`) in Firebase Console → Auth → Sign-in method
 
 ### Android distribution
 - [ ] Flutter release APK built: `flutter build apk --release`
 - [ ] APK installed via ADB or transferred manually to device
-- [ ] Backend health check verified: `https://your-app.up.railway.app/`
+- [ ] Backend health check verified: `https://your-render-url.onrender.com/health`
 
 ### Web + iOS PWA distribution
 - [ ] Flutter web built: `flutter build web --release`
@@ -659,7 +670,7 @@ DEVICE_UPDATE_INTERVAL_S = 60     # 1 device update per 60s
 
 ### For each ESP32 device
 - [ ] WiFi credentials configured in firmware
-- [ ] WebSocket URL updated to Railway WSS address
+- [ ] WebSocket URL updated to Render WSS address
 - [ ] Pump relay wired and tested
 - [ ] All sensors (turbidity, pH, TDS, flow, level) calibrated
 - [ ] Device registered via `POST /devices/register`
