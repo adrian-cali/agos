@@ -679,7 +679,14 @@ final tankDataProvider = StateNotifierProvider<TankDataNotifier, TankData>((ref)
   ws.addListener((data) {
     final type = data['type'];
     if (type == 'state_snapshot') {
-      notifier.update(TankData.fromJson(data['tank_data'] ?? {}));
+      // When sensor is offline the backend sends tank_data: null to prevent
+      // stale Redis-cached spike values from appearing on first app open.
+      // Mirror that on the Flutter side by clearing any locally cached data.
+      if (data['tank_data'] == null) {
+        notifier.clear();
+      } else {
+        notifier.update(TankData.fromJson(data['tank_data'] as Map<String, dynamic>));
+      }
     } else if (type == 'tank_update') {
       notifier.update(TankData.fromJson(data['data'] ?? {}));
     }
@@ -721,6 +728,16 @@ class TankDataNotifier extends StateNotifier<TankData> {
       } catch (_) {}
     });
   }
+
+  /// Reset to zero-state and remove the local cache so stale data is never
+  /// shown when the sensor is offline.
+  void clear() {
+    if (!mounted) return;
+    state = TankData(level: 0, volume: 0, capacity: 50000, flowRate: 0, status: 'unknown', timestamp: '');
+    SharedPreferences.getInstance().then((prefs) {
+      try { prefs.remove(_key); } catch (_) {}
+    });
+  }
 }
 
 final waterQualityProvider =
@@ -730,7 +747,13 @@ final waterQualityProvider =
   ws.addListener((data) {
     final type = data['type'];
     if (type == 'state_snapshot') {
-      notifier.update(WaterQuality.fromJson(data['water_quality'] ?? {}));
+      // When sensor is offline the backend sends water_quality: null to prevent
+      // stale Redis-cached spike values from appearing on first app open.
+      if (data['water_quality'] == null) {
+        notifier.clear();
+      } else {
+        notifier.update(WaterQuality.fromJson(data['water_quality'] as Map<String, dynamic>));
+      }
     } else if (type == 'quality_update') {
       notifier.update(WaterQuality.fromJson(data['data'] ?? {}));
     }
@@ -763,6 +786,16 @@ class WaterQualityNotifier extends StateNotifier<WaterQuality> {
       try {
         prefs.setString(_key, jsonEncode(data.toJson()));
       } catch (_) {}
+    });
+  }
+
+  /// Reset to zero-state and remove the local cache so stale data is never
+  /// shown when the sensor is offline.
+  void clear() {
+    if (!mounted) return;
+    state = WaterQuality();
+    SharedPreferences.getInstance().then((prefs) {
+      try { prefs.remove(_key); } catch (_) {}
     });
   }
 }

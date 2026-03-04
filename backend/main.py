@@ -301,15 +301,19 @@ class ConnectionManager:
         # Only include alerts from the last 24 h to avoid stale entries from old sessions
         cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
         recent_alerts = [a for a in state["alerts"] if a.get("timestamp", "") >= cutoff]
+        # Only send sensor readings if a sensor is currently connected.
+        # When sensor_connected is False, stale Redis-cached values would appear
+        # as a false spike reading on first app open, so we send nulls instead.
+        sensor_live = state["sensor_connected"]
         await websocket.send_json({
             "type": "state_snapshot",
             "timestamp": datetime.now().isoformat(),
-            "tank_data": state["tank_data"],
-            "water_quality": state["water_quality"],
+            "tank_data": state["tank_data"] if sensor_live else None,
+            "water_quality": state["water_quality"] if sensor_live else None,
             "alerts": recent_alerts,
             "devices": state["devices"],
             "pump": state["pump"],
-            "sensor_connected": state["sensor_connected"],
+            "sensor_connected": sensor_live,
             "sensor_last_seen": state["sensor_last_seen"],
         })
 
