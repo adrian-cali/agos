@@ -682,9 +682,25 @@ async def root():
 
 @app.get("/health")
 async def health():
+    # Redis check
+    redis_status = "disabled"
+    if _redis_client is not None:
+        try:
+            _redis_client.ping()
+            redis_status = "ok"
+        except Exception:
+            redis_status = "error"
+
+    # Firebase check
+    firebase_status = "ok" if FIREBASE_ENABLED else "disabled"
+
     return {
         "status": "ok",
-        "sensor_connected": state["sensor_connected"]
+        "sensor_connected": state["sensor_connected"],
+        "sensor_connections": len(manager.sensor_connections),
+        "app_connections": len(manager.app_connections),
+        "firebase": firebase_status,
+        "redis": redis_status,
     }
 
 
