@@ -473,6 +473,12 @@ void setup() {
   delay(500);
   Serial.println("\n=== AGOS ESP32 Firmware ===");
 
+  // Init WiFi in station mode so WiFi.macAddress() works before any connection.
+  // This also initialises the Bluetooth subsystem on ESP32.
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  delay(100);
+
   // Pin modes
   pinMode(PIN_TRIG,       OUTPUT);
   pinMode(PIN_ECHO,       INPUT);
