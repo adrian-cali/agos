@@ -35,6 +35,7 @@
  */
 
 #include <WiFi.h>
+#include <esp_mac.h>          // esp_read_mac() for ESP32 core 3.x
 #include <Preferences.h>
 // BLE — use the built-in library from ESP32 Arduino core (do NOT install
 // the separate "ESP32 BLE Arduino" library from Arduino Library Manager;
@@ -127,10 +128,11 @@ bool               g_provisioningDone   = false;  // true after WiFi creds recei
 
 /// Stable device ID derived from the last 8 hex digits of the ESP32 MAC.
 String buildDeviceId() {
-  // esp_efuse_mac_get_default reads the base MAC from eFuse — works at any time,
-  // no WiFi init required.
+  // esp_mac.h provides esp_read_mac() on all ESP32 core versions.
+  // ESP_MAC_WIFI_STA is the correct enum in core 3.x (was renamed from
+  // ESP_IF_WIFI_STA in older cores).
   uint8_t mac[6] = {0};
-  esp_efuse_mac_get_default(mac);
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
   char buf[20];
   snprintf(buf, sizeof(buf), "agos-%02X%02X%02X%02X",
            mac[2], mac[3], mac[4], mac[5]);
