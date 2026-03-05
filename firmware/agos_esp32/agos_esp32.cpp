@@ -33,7 +33,7 @@
  *   PIN_FLOW        GPIO27   Flow sensor interrupt (YF-S201 Hall sensor)
  * ─────────────────────────────────────────────────────────────────────────────
  */
-
+#include <Arduino.h>
 #include <WiFi.h>
 #include <esp_mac.h>          // esp_read_mac() for ESP32 core 3.x
 #include <Preferences.h>
@@ -297,7 +297,7 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 class ProvisioningCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* chr) override {
     // getValue() returns Arduino String in ESP32 core 3.x
-    String rawArduino = chr->getValue();
+    std::string rawArduino = chr->getValue();
     if (rawArduino.length() == 0) return;
     std::string raw = rawArduino.c_str();  // convert to std::string for ArduinoJson
 
