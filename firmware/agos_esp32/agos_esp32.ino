@@ -312,7 +312,8 @@ class ProvisioningCallbacks : public BLECharacteristicCallbacks {
 
     const char* ssid     = doc["ssid"]      | "";
     const char* password = doc["password"]  | "";
-    const char* deviceId = doc["device_id"] | "";
+    // device_id is HARDCODED — ignore whatever the app sends
+    // const char* deviceId = doc["device_id"] | "";
 
     if (strlen(ssid) == 0) {
       Serial.println("[BLE] No SSID in payload — ignoring");
@@ -321,9 +322,7 @@ class ProvisioningCallbacks : public BLECharacteristicCallbacks {
 
     strncpy(g_ssid,     ssid,     sizeof(g_ssid)     - 1);
     strncpy(g_password, password, sizeof(g_password) - 1);
-    if (strlen(deviceId) > 0) {
-      strncpy(g_deviceId, deviceId, sizeof(g_deviceId) - 1);
-    }
+    // g_deviceId stays as hardcoded "agos-BLE01"
 
     Serial.printf("[BLE] Provisioning: SSID=%s, deviceId=%s\n", g_ssid, g_deviceId);
 
