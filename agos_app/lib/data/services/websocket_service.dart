@@ -840,7 +840,10 @@ final alertsProvider =
 
   ws.addListener((data) {
     final type = data['type'];
+    // When push notifications are disabled, suppress all alert display
+    final notificationsEnabled = ref.read(pushNotificationsEnabledProvider);
     if (type == 'state_snapshot') {
+      if (!notificationsEnabled) return; // don't populate modal when disabled
       final serverAlerts = (data['alerts'] as List?)
               ?.map((a) => AlertItem.fromJson(a))
               .toList() ??
@@ -861,11 +864,14 @@ final alertsProvider =
       // not a real-time event. Notifications fire only for live system_alert messages.
     } else if (type == 'system_alert') {
       final alert = AlertItem.fromJson(data['alert'] ?? {});
+      // If push notifications are disabled, suppress new in-app alerts as well
+      if (!ref.read(pushNotificationsEnabledProvider)) return;
       notifier.addAlert(alert);
       // Cache this alert
       ref.read(cachedAlertsProvider.notifier).addOrUpdate(alert);
       maybeNotify(alert);
     } else if (type == 'alerts_updated') {
+      if (!notificationsEnabled) return; // don't sync alerts when disabled
       final serverAlerts = (data['alerts'] as List?)
               ?.map((a) => AlertItem.fromJson(a))
               .toList() ??
