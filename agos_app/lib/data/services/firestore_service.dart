@@ -153,6 +153,17 @@ class UserThresholds {
       );
 }
 
+// ============= Device Sharing Models =============
+
+enum SharingResult { success, notFound, isSelf, error }
+
+class SharedUserInfo {
+  final String uid;
+  final String name;
+  final String email;
+  const SharedUserInfo({required this.uid, required this.name, required this.email});
+}
+
 // ============= Service =============
 
 class FirestoreService {
@@ -346,6 +357,120 @@ class FirestoreService {
         .set(t.toMap());
   }
 
+  /// Save or refresh the user's FCM push notification token.
+  /// Called on first login and whenever FCM rotates the device token.
+  /// Stored on the top-level user document so the backend can look it up by UID.
+  Future<void> saveFcmToken(String uid, String token) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(uid)
+          .set({'fcm_token': token}, SetOptions(merge: true));
+      debugPrint('[FCM] Token saved for user $uid');
+    } catch (e) {
+      debugPrint('[FCM] saveFcmToken error: $e');
+    }
+  }
+
+  // ─── Device Sharing ───────────────────────────────────────────────────────
+
+  /// Invite another user to view this device by email.
+  /// Looks up the target user by email, then adds their UID to
+  /// `devices/{deviceId}.shared_uids`.
+  /// Returns [SharingResult] describing success or the failure reason.
+  Future<SharingResult> shareDeviceWithEmail({
+    required String deviceId,
+    required String inviteeEmail,
+    required String ownerUid,
+  }) async {
+    try {
+      // Find the user with this email
+      final snap = await _db
+          .collection('users')
+          .where('email', isEqualTo: inviteeEmail.trim().toLowerCase())
+          .limit(1)
+          .get();
+
+      if (snap.docs.isEmpty) {
+        return SharingResult.notFound;
+      }
+
+      final inviteeUid = snap.docs.first.id;
+
+      if (inviteeUid == ownerUid) {
+        return SharingResult.isSelf;
+      }
+
+      // Add to shared_uids array (arrayUnion is idempotent)
+      await _db.collection('devices').doc(deviceId).update({
+        'shared_uids': FieldValue.arrayUnion([inviteeUid]),
+      });
+
+      // Add device_id to the invitee's user document as well so they can
+      // find the device when they log in (shared_device_id field).
+      await _db.collection('users').doc(inviteeUid).set({
+        'shared_device_ids': FieldValue.arrayUnion([deviceId]),
+      }, SetOptions(merge: true));
+
+      debugPrint('[Share] $inviteeEmail ($inviteeUid) added to $deviceId');
+      return SharingResult.success;
+    } catch (e) {
+      debugPrint('[Share] shareDeviceWithEmail error: $e');
+      return SharingResult.error;
+    }
+  }
+
+  /// Remove a shared user from the device.
+  Future<void> removeSharedUser({
+    required String deviceId,
+    required String sharedUid,
+  }) async {
+    try {
+      await _db.collection('devices').doc(deviceId).update({
+        'shared_uids': FieldValue.arrayRemove([sharedUid]),
+      });
+      // Also remove from the user's shared_device_ids list
+      await _db.collection('users').doc(sharedUid).update({
+        'shared_device_ids': FieldValue.arrayRemove([deviceId]),
+      });
+      debugPrint('[Share] $sharedUid removed from $deviceId');
+    } catch (e) {
+      debugPrint('[Share] removeSharedUser error: $e');
+    }
+  }
+
+  /// Stream of [SharedUserInfo] for all users sharing a device.
+  /// Emits an updated list whenever `devices/{deviceId}.shared_uids` changes.
+  Stream<List<SharedUserInfo>> sharedUsersStream(String deviceId) {
+    return _db.collection('devices').doc(deviceId).snapshots().asyncMap(
+      (snap) async {
+        if (!snap.exists) return [];
+        final data = snap.data() ?? {};
+        final uids = List<String>.from(data['shared_uids'] ?? []);
+        if (uids.isEmpty) return [];
+
+        // Fetch user profiles in parallel
+        final futures = uids.map((uid) async {
+          try {
+            final doc = await _db.collection('users').doc(uid).get();
+            if (!doc.exists) return null;
+            final d = doc.data() ?? {};
+            return SharedUserInfo(
+              uid: uid,
+              name: d['name'] ?? 'Unknown',
+              email: d['email'] ?? '',
+            );
+          } catch (_) {
+            return null;
+          }
+        });
+
+        final results = await Future.wait(futures);
+        return results.whereType<SharedUserInfo>().toList();
+      },
+    );
+  }
+
   // ─── Device Setup ─────────────────────────────────────────────────────────
 
   /// Returns true if the user already has a linked device in Firestore.
@@ -489,12 +614,43 @@ final hasLinkedDeviceProvider = FutureProvider<bool>((ref) async {
 });
 
 /// The real device ID from Firestore for the signed-in user.
-/// Returns null while loading or if no device is linked.
+/// Checks both owned devices (`device_id`) and shared devices (`shared_device_ids`).
+/// Returns the first available device ID, or null if none.
 final linkedDeviceIdProvider = FutureProvider<String?>((ref) async {
   final user = ref.watch(currentUserProvider);
   if (user == null) return null;
   final service = ref.watch(firestoreServiceProvider);
-  return service.getLinkedDeviceId(user.uid);
+  // Prefer the owned device, fall back to first shared device
+  final owned = await service.getLinkedDeviceId(user.uid);
+  if (owned != null && owned.isNotEmpty) return owned;
+
+  // Check shared_device_ids
+  try {
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (!doc.exists) return null;
+    final sharedIds = List<String>.from(doc.data()?['shared_device_ids'] ?? []);
+    if (sharedIds.isNotEmpty) return sharedIds.first;
+  } catch (_) {}
+  return null;
+});
+
+/// Whether the linked device is owned (true) or just shared (false).
+final isDeviceOwnerProvider = FutureProvider<bool>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return false;
+  final service = ref.watch(firestoreServiceProvider);
+  final owned = await service.getLinkedDeviceId(user.uid);
+  return owned != null && owned.isNotEmpty;
+});
+
+/// Stream of users sharing the current user's device (owner-only).
+final sharedUsersProvider =
+    StreamProvider<List<SharedUserInfo>>((ref) {
+  final deviceId =
+      ref.watch(linkedDeviceIdProvider).valueOrNull ?? '';
+  if (deviceId.isEmpty) return Stream.value([]);
+  final service = ref.watch(firestoreServiceProvider);
+  return service.sharedUsersStream(deviceId);
 });
 
 // ─── Setup State (transient, lives only during the setup flow) ─────────────

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_bluetooth_classic_serial/flutter_bluetooth_classic.dart'
     as classic;
@@ -235,10 +236,24 @@ class BleProvisioningService {
       if (!success) throw Exception('Failed to send credentials via Classic Bluetooth.');
     } else if (_characteristic != null) {
       // BLE
-      await _characteristic!.write(
-        utf8.encode(payload),
-        withoutResponse: false,
-      );
+      try {
+        await _characteristic!.write(
+          utf8.encode(payload),
+          withoutResponse: false,
+        );
+      } catch (e) {
+        // fbp-code 6 = "device is not connected" — this fires when the ESP32
+        // drops BLE immediately after saving credentials (it transitions to
+        // WiFi mode). The write already completed on the hardware side, so
+        // treat this as a success rather than an error.
+        final msg = e.toString();
+        if (msg.contains('fbp-code: 6') ||
+            msg.contains('device is not connected')) {
+          debugPrint('[BLE] Write disconnect (fbp-6) — credentials delivered OK');
+          return; // ← treat as success
+        }
+        rethrow;
+      }
     } else {
       throw Exception('Not connected to a device.');
     }

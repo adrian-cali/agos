@@ -9,7 +9,7 @@ import os
 import time
 import json
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, messaging as fcm_messaging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -271,13 +271,142 @@ def _should_update_device(device_id: str) -> bool:
     return False
 
 
-# ============= CONNECTION MANAGER =============
+# ============= FCM PUSH NOTIFICATIONS =============
+# Sends a push notification to the device owner when a water-quality or system
+# alert threshold is crossed.  Uses per-(device, metric) cooldowns to prevent
+# notification spam.
+#
+# Token lookup flow:
+#   1. Check in-memory cache (_fcm_token_cache).
+#   2. On a cache miss (or TTL expired) → look up Firestore:
+#        devices/{device_id}.owner_uid  →  users/{uid}.fcm_token
+#   Token is then cached for _FCM_TOKEN_CACHE_TTL_S seconds.
+
+_FCM_TOKEN_CACHE_TTL_S = 300       # refresh owner token lookup every 5 min
+_FCM_ALERT_COOLDOWN_S  = 300       # max 1 push per metric per device per 5 min
+
+# Cache: device_id → (fcm_token, cached_at)
+_fcm_token_cache: dict[str, tuple[str, datetime]] = {}
+
+# Cooldown: (device_id, metric) → last push timestamp
+_fcm_alert_sent: dict[tuple[str, str], datetime] = {}
+
+
+def _fcm_should_alert(device_id: str, metric: str) -> bool:
+    """Return True if the cooldown has expired and a push may be sent."""
+    key = (device_id, metric)
+    last = _fcm_alert_sent.get(key)
+    if last is None or (datetime.now() - last).total_seconds() >= _FCM_ALERT_COOLDOWN_S:
+        _fcm_alert_sent[key] = datetime.now()
+        return True
+    return False
+
+
+def _fcm_get_tokens_sync(device_id: str) -> list[str]:
+    """
+    Blocking helper — looks up ALL FCM tokens for the device:
+      1. The owner  (devices/{device_id}.owner_uid → users/{uid}.fcm_token)
+      2. Any shared users (devices/{device_id}.shared_uids → each user's fcm_token)
+
+    Called from a thread pool (via asyncio.to_thread) so it doesn't block the
+    event loop.  Returns an empty list if Firebase is disabled or no tokens found.
+    """
+    if not FIREBASE_ENABLED or db is None:
+        return []
+
+    # Check cache (cache stores a single "primary" token for quick path)
+    cached = _fcm_token_cache.get(device_id)
+    if cached:
+        token, cached_at = cached
+        if (datetime.now() - cached_at).total_seconds() < _FCM_TOKEN_CACHE_TTL_S:
+            return [token]
+
+    try:
+        device_doc = db.collection("devices").document(device_id).get()
+        if not device_doc.exists:
+            return []
+        device_data = device_doc.to_dict() or {}
+
+        # Collect all UIDs that should receive alerts
+        uids: set[str] = set()
+        owner_uid: Optional[str] = device_data.get("owner_uid")
+        if owner_uid:
+            uids.add(owner_uid)
+        for uid in device_data.get("shared_uids", []):
+            uids.add(uid)
+
+        if not uids:
+            return []
+
+        tokens: list[str] = []
+        for uid in uids:
+            try:
+                user_doc = db.collection("users").document(uid).get()
+                if user_doc.exists:
+                    token = (user_doc.to_dict() or {}).get("fcm_token")
+                    if token:
+                        tokens.append(token)
+            except Exception as e:
+                logger.warning(f"[FCM] Token lookup for uid={uid}: {e}")
+
+        # Cache the owner token for the quick-path next time
+        if owner_uid and tokens:
+            _fcm_token_cache[device_id] = (tokens[0], datetime.now())
+
+        return tokens
+    except Exception as e:
+        logger.warning(f"[FCM] Token lookup failed for {device_id}: {e}")
+        return []
+
+
+def _fcm_send_sync(token: str, title: str, body: str, data: dict) -> None:
+    """Blocking helper — sends an FCM message to a single token.  Called via asyncio.to_thread."""
+    try:
+        message = fcm_messaging.Message(
+            notification=fcm_messaging.Notification(title=title, body=body),
+            data={k: str(v) for k, v in data.items()},  # FCM data values must be strings
+            token=token,
+            android=fcm_messaging.AndroidConfig(
+                priority="high",
+                notification=fcm_messaging.AndroidNotification(
+                    channel_id="agos_alerts",
+                    icon="ic_launcher",
+                ),
+            ),
+        )
+        fcm_messaging.send(message)
+        logger.info(f"[FCM] Sent '{title}' → token ...{token[-8:]}")
+    except Exception as e:
+        logger.warning(f"[FCM] Send failed (token ...{token[-8:]}): {e}")
+        # Invalidate cached token so the next attempt re-fetches.
+        for dev_id, (t, _) in list(_fcm_token_cache.items()):
+            if t == token:
+                _fcm_token_cache.pop(dev_id, None)
+
+
+async def _fcm_alert(device_id: str, title: str, body: str, metric: str) -> None:
+    """
+    Fire-and-forget coroutine: look up ALL owner+shared FCM tokens and send
+    a push to each.  Runs the blocking Firestore/FCM calls in a thread pool
+    so the event loop stays free.
+    """
+    if not FIREBASE_ENABLED:
+        return
+    tokens: list[str] = await asyncio.to_thread(_fcm_get_tokens_sync, device_id)
+    if not tokens:
+        return
+    data = {"type": "water_quality_alert", "device_id": device_id, "metric": metric}
+    for token in tokens:
+        await asyncio.to_thread(_fcm_send_sync, token, title, body, data)
 
 
 class ConnectionManager:
     def __init__(self):
         self.sensor_connections: Set[WebSocket] = set()
         self.app_connections: Set[WebSocket] = set()
+        # Maps each sensor WebSocket → its device_id (set once the first
+        # sensor_data message is received for that connection).
+        self._sensor_device_ids: dict[WebSocket, str] = {}
 
     async def connect_sensor(self, websocket: WebSocket):
         await websocket.accept()
@@ -317,7 +446,12 @@ class ConnectionManager:
             "sensor_last_seen": state["sensor_last_seen"],
         })
 
+    def register_sensor_device(self, websocket: WebSocket, device_id: str) -> None:
+        """Associate a device_id with a sensor WebSocket (called on first data message)."""
+        self._sensor_device_ids[websocket] = device_id
+
     async def disconnect_sensor(self, websocket: WebSocket):
+        device_id = self._sensor_device_ids.pop(websocket, None)
         self.sensor_connections.discard(websocket)
         still_connected = len(self.sensor_connections) > 0
         now = datetime.now().isoformat()
@@ -329,8 +463,14 @@ class ConnectionManager:
             "connected": still_connected,
             "last_seen": state["sensor_last_seen"],
         })
-        # The Flutter client generates a disconnect alert locally when it
-        # receives sensor_status(connected=false), so no server-side alert needed.
+        # Send a push notification if the last sensor for this device went offline.
+        if not still_connected and device_id and _fcm_should_alert(device_id, "offline"):
+            asyncio.create_task(_fcm_alert(
+                device_id,
+                "📡 AGOS Device Offline",
+                "Your AGOS water sensor has disconnected. Check power and internet.",
+                "offline",
+            ))
 
     def disconnect_app(self, websocket: WebSocket):
         self.app_connections.discard(websocket)
@@ -400,9 +540,43 @@ async def handle_sensor_data(data: dict):
         "optimal" if tds <= thresholds["tds_max"] else "warning"
     )
 
-    # Threshold checks are handled client-side from Firestore readings
-    # (firestoreAlertsProvider in firestore_service.dart) — no server-side
-    # threshold alerts needed to avoid duplicates in the notification modal.
+    # ── FCM push notifications for threshold violations ───────────────────────
+    # Fire-and-forget tasks so alerting never blocks the sensor pipeline.
+    # Each metric has an independent 5-minute cooldown per device to prevent spam.
+    level = state["tank_data"]["level"]
+
+    if state["water_quality"]["turbidity"]["status"] == "warning" and _fcm_should_alert(device_id, "turbidity"):
+        asyncio.create_task(_fcm_alert(
+            device_id,
+            "⚠️ High Turbidity Detected",
+            f"Water turbidity is {turb:.1f} NTU — above the {thresholds['turbidity_max']:.0f} NTU limit.",
+            "turbidity",
+        ))
+
+    if state["water_quality"]["ph"]["status"] == "warning" and _fcm_should_alert(device_id, "ph"):
+        asyncio.create_task(_fcm_alert(
+            device_id,
+            "⚠️ pH Level Out of Range",
+            f"Water pH is {ph:.1f} — outside safe range {thresholds['ph_min']:.1f}–{thresholds['ph_max']:.1f}.",
+            "ph",
+        ))
+
+    if state["water_quality"]["tds"]["status"] == "warning" and _fcm_should_alert(device_id, "tds"):
+        asyncio.create_task(_fcm_alert(
+            device_id,
+            "⚠️ High TDS Detected",
+            f"Water TDS is {tds:.0f} ppm — above the {thresholds['tds_max']:.0f} ppm limit.",
+            "tds",
+        ))
+
+    if level < 20.0 and _fcm_should_alert(device_id, "level"):
+        asyncio.create_task(_fcm_alert(
+            device_id,
+            "⚠️ Low Water Level",
+            f"Tank level is {level:.0f}% — consider refilling.",
+            "level",
+        ))
+    # ──────────────────────────────────────────────────────────────────────────
 
     # Firestore write (throttled — at most once every FIRESTORE_WRITE_INTERVAL_S seconds)
     if FIREBASE_ENABLED and db is not None and _should_write_firestore(device_id):
@@ -794,6 +968,11 @@ async def websocket_sensor(websocket: WebSocket):
             msg_type = data.get("type")
 
             if msg_type == "sensor_data":
+                # Register device_id → websocket mapping on first data message
+                # so disconnect_sensor knows which device went offline.
+                device_id = data.get("device_id", "")
+                if device_id:
+                    manager.register_sensor_device(websocket, device_id)
                 await handle_sensor_data(data)
             elif msg_type == "alert":
                 await handle_alert(data)
