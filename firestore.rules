@@ -12,14 +12,18 @@ service cloud.firestore {
       allow read, write: if isAuth() && request.auth.uid == userId;
     }
 
-    // ── Devices collection: owner can read/write their device doc ──────────
+    // ── Devices collection: owner OR shared users can read; only owner can write ──
     match /devices/{deviceId} {
       allow read: if isAuth() && (
-        resource.data.owner_uid == request.auth.uid
+        resource.data.owner_uid == request.auth.uid ||
+        request.auth.uid in resource.data.shared_uids
       );
-      allow write: if isAuth() && (
-        request.resource.data.owner_uid == request.auth.uid
-      );
+      // Owner can update (e.g., name, thresholds)
+      allow update: if isAuth() && resource.data.owner_uid == request.auth.uid;
+      // Only the backend (Admin SDK) creates device docs via provisioning
+      // But allow the app to create if the uid matches what it writes as owner_uid
+      allow create: if isAuth() && request.resource.data.owner_uid == request.auth.uid;
+      allow delete: if isAuth() && resource.data.owner_uid == request.auth.uid;
     }
 
     // ── Sensor readings: authenticated users can read their device's readings
