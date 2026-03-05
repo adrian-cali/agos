@@ -292,8 +292,10 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 class ProvisioningCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* chr) override {
-    std::string raw = chr->getValue();
-    if (raw.empty()) return;
+    // getValue() returns Arduino String in ESP32 core 3.x
+    String rawArduino = chr->getValue();
+    if (rawArduino.length() == 0) return;
+    std::string raw = rawArduino.c_str();  // convert to std::string for ArduinoJson
 
     Serial.printf("[BLE] Received %d bytes\n", raw.length());
 
