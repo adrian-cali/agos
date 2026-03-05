@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
 import '../../../data/services/firestore_service.dart'
-    show hasUnreadAlertsProvider;
+    show hasUnreadAlertsProvider, firestoreServiceProvider;
 import '../../../data/services/websocket_service.dart'
     show pushNotificationsEnabledProvider;
 import '../../../data/services/filter_reminder_service.dart';
@@ -200,7 +201,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               title: 'Push Notifications',
               subtitle: 'Receive alerts about water quality',
               value: ref.watch(pushNotificationsEnabledProvider),
-              onChanged: (v) => ref.read(pushNotificationsEnabledProvider.notifier).setEnabled(v),
+              onChanged: (v) async {
+                ref.read(pushNotificationsEnabledProvider.notifier).setEnabled(v);
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                if (uid != null) {
+                  final fs = ref.read(firestoreServiceProvider);
+                  if (v) {
+                    // Re-enable: get and save FCM token
+                    final token = await FirebaseMessaging.instance.getToken();
+                    if (token != null) await fs.saveFcmToken(uid, token);
+                  } else {
+                    // Disable: remove FCM token so backend won't send
+                    await fs.clearFcmToken(uid);
+                  }
+                }
+              },
             ),
             _buildDivider(),
             _buildToggleTile(

@@ -372,6 +372,17 @@ class FirestoreService {
     }
   }
 
+  /// Remove the FCM token so the backend stops sending push notifications.
+  /// Called when the user disables push notifications in Settings.
+  Future<void> clearFcmToken(String uid) async {
+    try {
+      await _db.collection('users').doc(uid).update({'fcm_token': FieldValue.delete()});
+      debugPrint('[FCM] Token cleared for user $uid');
+    } catch (e) {
+      debugPrint('[FCM] clearFcmToken error: $e');
+    }
+  }
+
   // ─── Device Sharing ───────────────────────────────────────────────────────
 
   /// Invite another user to view this device by email.
