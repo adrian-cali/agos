@@ -806,8 +806,11 @@ final alertsProvider =
   final ws = ref.watch(webSocketServiceProvider);
 
   // Seed from cache so alerts survive hot restarts
+  // (only if push notifications are enabled)
   final cached = ref.read(cachedAlertsProvider);
-  if (cached.isNotEmpty) notifier.setAlerts(cached);
+  if (cached.isNotEmpty && ref.read(pushNotificationsEnabledProvider)) {
+    notifier.setAlerts(cached);
+  }
 
   /// Fire an OS notification for an alert if not yet shown.
   void maybeNotify(AlertItem alert) {
