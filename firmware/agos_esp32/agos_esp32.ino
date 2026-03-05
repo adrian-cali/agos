@@ -395,6 +395,13 @@ void startBleProvisioning() {
 
 bool connectWifi(const char* ssid, const char* password, int timeoutSec = 20) {
   Serial.printf("[WiFi] Connecting to '%s'...\n", ssid);
+  // Reset WiFi state completely before connecting — prevents "sta is
+  // connecting, cannot set config" errors when called after BLE provisioning.
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(300);
+  WiFi.mode(WIFI_STA);
+  delay(100);
   WiFi.begin(ssid, password);
   int elapsed = 0;
   while (WiFi.status() != WL_CONNECTED && elapsed < timeoutSec) {
@@ -475,12 +482,6 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("\n=== AGOS ESP32 Firmware ===");
-
-  // Init WiFi in station mode so WiFi.macAddress() works before any connection.
-  // This also initialises the Bluetooth subsystem on ESP32.
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect(true);
-  delay(100);
 
   // Pin modes
   pinMode(PIN_TRIG,       OUTPUT);
