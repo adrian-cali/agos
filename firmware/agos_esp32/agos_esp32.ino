@@ -98,7 +98,8 @@ OneWire oneWire(PIN_DS18B20);
 DallasTemperature tempSensor(&oneWire);
 
 // Persisted credentials / device identity
-char g_deviceId[32]  = "";   // e.g., "agos-zksl9QK3"
+// Hardcoded fallback ID — overwritten by BLE provisioning if app sends one.
+char g_deviceId[32]  = "agos-BLE01";
 char g_ssid[64]      = "";
 char g_password[64]  = "";
 
@@ -498,17 +499,10 @@ void setup() {
   prefs.begin("agos", true);
   prefs.getString("ssid",      g_ssid,     sizeof(g_ssid));
   prefs.getString("password",  g_password, sizeof(g_password));
-  prefs.getString("device_id", g_deviceId, sizeof(g_deviceId));
+  // Note: device_id is hardcoded above; do not overwrite from NVS.
   prefs.end();
 
-  // Generate stable device_id if not yet set
-  if (strlen(g_deviceId) == 0) {
-    String id = buildDeviceId();
-    strncpy(g_deviceId, id.c_str(), sizeof(g_deviceId) - 1);
-    prefs.begin("agos", false);
-    prefs.putString("device_id", g_deviceId);
-    prefs.end();
-  }
+  // (device_id is hardcoded — no dynamic generation needed)
 
   Serial.printf("[Init] Device ID: %s\n", g_deviceId);
 
