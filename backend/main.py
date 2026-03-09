@@ -422,6 +422,18 @@ class ConnectionManager:
             "last_seen": now,
         })
 
+        # If a manual pump command is active, resend it to the newly connected
+        # sensor so the relay is immediately in sync (handles firmware restarts
+        # while the pump was running).
+        if state["pump"]["manual"] and state["pump"]["pump_on"]:
+            await websocket.send_json({
+                "type": "pump_command",
+                "action": "on",
+                "duration_seconds": state["pump"]["remaining_seconds"],
+                "source": "manual",
+                "reason": "reconnect_sync",
+            })
+
     async def connect_app(self, websocket: WebSocket):
         await websocket.accept()
         self.app_connections.add(websocket)
@@ -458,6 +470,10 @@ class ConnectionManager:
         now = datetime.now().isoformat()
         state["sensor_connected"] = still_connected
         state["sensor_last_seen"] = now  # always stamp the last-seen time
+        # Reset auto-pump decision so the first data point after reconnect
+        # always triggers a fresh pump command (ON or OFF as required).
+        if not still_connected:
+            state["pump"]["auto_pump_active"] = None
         logger.info(f"Sensor disconnected. Total: {len(self.sensor_connections)}")
         await self.broadcast_to_apps({
             "type": "sensor_status",
