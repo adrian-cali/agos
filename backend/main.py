@@ -173,6 +173,7 @@ state = {
         "manual": False,
         "remaining_seconds": 0,
         "last_command": None,
+        "auto_pump_active": None,  # None = not yet determined; True/False = last auto decision
     },
     # ESP32/sensor connectivity — true when at least one sensor WS is connected
     "sensor_connected": False,
@@ -576,6 +577,48 @@ async def handle_sensor_data(data: dict):
             f"Tank level is {level:.0f}% — consider refilling.",
             "level",
         ))
+    # ──────────────────────────────────────────────────────────────────────────
+
+    # ── Auto-pump control based on water quality thresholds ──────────────────
+    # When the backend is connected it takes over pump decisions from the firmware.
+    # Pump ON when any metric is outside the configured threshold range.
+    # Only fires when the user is NOT in manual mode and only when desired state changes.
+    if not state["pump"]["manual"]:
+        water_ok = (
+            state["water_quality"]["turbidity"]["status"] == "optimal"
+            and state["water_quality"]["ph"]["status"] == "optimal"
+            and state["water_quality"]["tds"]["status"] == "optimal"
+        )
+        desired_pump = not water_ok
+        last_auto = state["pump"]["auto_pump_active"]
+        if desired_pump != last_auto:  # only send when decision changes
+            state["pump"]["auto_pump_active"] = desired_pump
+            state["pump"]["pump_on"] = desired_pump
+            pump_msg = {
+                "type": "pump_command",
+                "action": "on" if desired_pump else "off",
+                "duration_seconds": 0,
+                "source": "auto",
+                "timestamp": datetime.now().isoformat(),
+            }
+            disconnected = set()
+            for conn in manager.sensor_connections:
+                try:
+                    await conn.send_json(pump_msg)
+                except Exception:
+                    disconnected.add(conn)
+            for c in disconnected:
+                manager.sensor_connections.discard(c)
+            await manager.broadcast_to_apps({
+                "type": "pump_update",
+                "pump_on": desired_pump,
+                "manual": False,
+                "remaining_seconds": 0,
+                "timestamp": datetime.now().isoformat(),
+            })
+            logger.info(
+                f"[Auto-pump] Quality={'OK' if water_ok else 'POOR'} → pump {'ON' if desired_pump else 'OFF'}"
+            )
     # ──────────────────────────────────────────────────────────────────────────
 
     # Firestore write (throttled — at most once every FIRESTORE_WRITE_INTERVAL_S seconds)
