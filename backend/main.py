@@ -1024,8 +1024,8 @@ async def websocket_sensor(websocket: WebSocket):
                     "type": "heartbeat_ack",
                     "timestamp": datetime.now().isoformat()
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.error(f"[WS] Sensor handler error — connection will close: {exc!r}")
     finally:
         await manager.disconnect_sensor(websocket)
 
