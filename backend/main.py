@@ -602,7 +602,7 @@ async def handle_sensor_data(data: dict):
                 "timestamp": datetime.now().isoformat(),
             }
             disconnected = set()
-            for conn in manager.sensor_connections:
+            for conn in list(manager.sensor_connections):  # snapshot to avoid mid-iteration mutation
                 try:
                     await conn.send_json(pump_msg)
                 except Exception:
