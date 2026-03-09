@@ -160,11 +160,11 @@ state = {
     ],
     "settings": {
         "thresholds": {
-            "turbidity_min": 10.0,
+            "turbidity_min": 0.0,    # 0 = accept any turbidity from 0 NTU upward
             "turbidity_max": 50.0,
-            "ph_min": 6.5,
-            "ph_max": 8.3,
-            "tds_max": 500.0
+            "ph_min": 6.0,
+            "ph_max": 9.5,
+            "tds_max": 1000.0
         }
     },
     # Pump runtime state — updated when pump_command is received or sensor reports back
