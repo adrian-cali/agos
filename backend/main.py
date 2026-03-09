@@ -590,7 +590,7 @@ async def handle_sensor_data(data: dict):
             and state["water_quality"]["tds"]["status"] == "optimal"
         )
         desired_pump = not water_ok
-        last_auto = state["pump"]["auto_pump_active"]
+        last_auto = state["pump"].get("auto_pump_active")  # .get() safe if key absent
         if desired_pump != last_auto:  # only send when decision changes
             state["pump"]["auto_pump_active"] = desired_pump
             state["pump"]["pump_on"] = desired_pump
