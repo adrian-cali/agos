@@ -398,6 +398,13 @@ class _WsLastDataNotifier extends StateNotifier<DateTime?> {
       prefs.setInt(_key, dt.millisecondsSinceEpoch);
     });
   }
+
+  void clear() {
+    state = null;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_key);
+    });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -597,6 +604,17 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
 
   final service = WebSocketService();
 
+  // Watchdog: if no sensor data arrives for 15 s, mark sensor as offline.
+  // This lets the UI show "Idle" within 15 s of the ESP32 going silent,
+  // rather than waiting 40+ s for the backend's TCP keepalive timeout.
+  Timer? sensorWatchdog;
+  void resetWatchdog() {
+    sensorWatchdog?.cancel();
+    sensorWatchdog = Timer(const Duration(seconds: 15), () {
+      ref.read(wsConnectedProvider.notifier).state = false;
+    });
+  }
+
   // ── Live/Idle is driven by the BACKEND’s sensor_status broadcasts ────────────
   // The backend tracks whether the ESP32 is connected and writes that into:
   //   • state_snapshot.sensor_connected  (sent on every fresh app connect)
@@ -612,16 +630,15 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
         final sensorConnected = data['sensor_connected'] as bool? ?? false;
         ref.read(wsConnectedProvider.notifier).state = sensorConnected;
 
-        // Only restore last-seen timestamp when sensor is actually connected;
-        // the stale value from a previous session would show a confusing
-        // "Updated 8h ago" when the device is offline.
         if (sensorConnected) {
+          // Sensor is live — restore timestamp and start watchdog.
           final lastSeenRaw = data['sensor_last_seen'] as String?;
           if (lastSeenRaw != null) {
             try {
               ref.read(wsLastDataProvider.notifier).update(DateTime.parse(lastSeenRaw));
             } catch (_) {}
           }
+          resetWatchdog();
         }
         break;
 
@@ -630,22 +647,30 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
         final connected = data['connected'] as bool? ?? false;
         ref.read(wsConnectedProvider.notifier).state = connected;
 
-        // Always update the last-seen timestamp so "Updated X ago" stays accurate.
-        final sensorLastSeenRaw = data['last_seen'] as String?;
-        if (sensorLastSeenRaw != null) {
-          try {
-            ref.read(wsLastDataProvider.notifier).update(DateTime.parse(sensorLastSeenRaw));
-          } catch (_) {
+        if (connected) {
+          // Sensor reconnected — stamp the time and start watchdog.
+          final sensorLastSeenRaw = data['last_seen'] as String?;
+          if (sensorLastSeenRaw != null) {
+            try {
+              ref.read(wsLastDataProvider.notifier).update(DateTime.parse(sensorLastSeenRaw));
+            } catch (_) {
+              ref.read(wsLastDataProvider.notifier).update(DateTime.now());
+            }
+          } else {
             ref.read(wsLastDataProvider.notifier).update(DateTime.now());
           }
+          resetWatchdog();
         } else {
-          ref.read(wsLastDataProvider.notifier).update(DateTime.now());
+          // Backend confirmed sensor offline — cancel the watchdog.
+          sensorWatchdog?.cancel();
+          sensorWatchdog = null;
         }
         break;
 
       case 'tank_update':
       case 'quality_update':
-        // Keep last-data timestamp fresh so the UI can show "last seen X ago".
+        // Fresh sensor data arrived — reset the watchdog and stamp the time.
+        resetWatchdog();
         ref.read(wsLastDataProvider.notifier).update(DateTime.now());
         break;
     }
@@ -668,6 +693,7 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   });
 
   ref.onDispose(() {
+    sensorWatchdog?.cancel();
     service.disconnect();
   });
   return service;

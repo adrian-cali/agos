@@ -229,6 +229,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             _buildFilterReminderTile(),
           ]),
           const SizedBox(height: 24),
+
+          // DEVICE Section
+          _buildSectionHeader('DEVICE'),
+          const SizedBox(height: 16),
+          _buildSettingsCard([
+            _buildSettingsTile(
+              icon: Icons.wifi_outlined,
+              title: 'Change Wi-Fi Network',
+              subtitle: 'Update the network the ESP32 connects to',
+              onTap: () => Navigator.pushNamed(context, '/change-wifi'),
+            ),
+          ]),
+          const SizedBox(height: 24),
           
           // SYSTEM Section
           _buildSectionHeader('SYSTEM'),
@@ -910,3 +923,4 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 }
+

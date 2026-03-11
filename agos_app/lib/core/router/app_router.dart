@@ -24,6 +24,7 @@ import '../../presentation/screens/settings/water_quality_thresholds_screen.dart
 import '../../presentation/screens/settings/data_logging_screen.dart';
 import '../../presentation/screens/settings/help_screen.dart';
 import '../../presentation/screens/settings/about_screen.dart';
+import '../../presentation/screens/settings/change_wifi_screen.dart';
 import '../../presentation/screens/device/device_management_screen.dart';
 import '../../presentation/screens/notifications/notifications_screen.dart';
 
@@ -81,6 +82,8 @@ class AppRouter {
         return _buildRouteNoTransition(const HelpScreen());
       case '/about':
         return _buildRouteNoTransition(const AboutScreen());
+      case '/change-wifi':
+        return _buildRouteNoTransition(const ChangeWifiScreen());
       case '/device-management':
         return _buildRoute(const DeviceManagementScreen());
       case '/notifications':

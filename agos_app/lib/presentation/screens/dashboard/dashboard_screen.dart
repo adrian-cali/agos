@@ -197,7 +197,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   children: [
                     const SizedBox(height: 25),
                     // System Status Card (no animation)
-                    _buildSystemStatusCard(),
+                    _buildSystemStatusCard(
+                      isLive: isLive,
+                      allOptimal: turbidityStatus.contains('Optimal') &&
+                          phStatus.contains('Optimal') &&
+                          tdsStatus.contains('Optimal'),
+                      hasData: hasData,
+                    ),
                     const SizedBox(height: 25),
                     // Water Quality Metrics Title
                     _buildSectionTitle('Water Quality Metrics'),
@@ -488,7 +494,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  Widget _buildSystemStatusCard() {
+  Widget _buildSystemStatusCard({
+    required bool isLive,
+    required bool allOptimal,
+    required bool hasData,
+  }) {
+    final String label;
+    final String badgeText;
+    final Color iconBg;
+    final Color iconColor;
+    final List<Color> badgeGradient;
+    final Widget statusIcon;
+
+    if (!isLive) {
+      label = 'Offline';
+      badgeText = 'Offline';
+      iconBg = const Color(0xFFF1F5F9);
+      iconColor = const Color(0xFF94A3B8);
+      badgeGradient = [const Color(0xFF94A3B8), const Color(0xFF64748B)];
+      statusIcon = const Icon(Icons.power_off_rounded, color: Color(0xFF94A3B8), size: 16);
+    } else if (!hasData || !allOptimal) {
+      label = 'Warning';
+      badgeText = 'Warning';
+      iconBg = const Color(0xFFFFFBEB);
+      iconColor = const Color(0xFFF59E0B);
+      badgeGradient = [const Color(0xFFFBBF24), const Color(0xFFF59E0B)];
+      statusIcon = const Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 16);
+    } else {
+      label = 'Operational';
+      badgeText = 'Operational';
+      iconBg = const Color(0xFFECFDF5);
+      iconColor = const Color(0xFF10B981);
+      badgeGradient = [const Color(0xFF00D492), const Color(0xFF00BBA7)];
+      statusIcon = const Icon(Icons.check, color: Colors.white, size: 16);
+    }
     return Container(
       width: double.infinity,
       height: 80,
@@ -516,7 +555,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
+                color: iconBg,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Center(
@@ -524,14 +563,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   width: 24,
                   height: 24,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981),
+                    color: iconColor,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(
-                    Icons.check,
-                    color: Colors.white,
-                    size: 16,
-                  ),
+                  child: Center(child: statusIcon),
                 ),
               ),
             ),
@@ -551,14 +586,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       fontWeight: FontWeight.w400,
                     ),
                   ),
-                  // const SizedBox(height: 4),
                   ShaderMask(
                     shaderCallback: (bounds) => const LinearGradient(
                       colors: [Color(0xFF1447E6), Color(0xFF0092B8)],
                     ).createShader(bounds),
-                    child: const Text(
-                      'Operational',
-                      style: TextStyle(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w500,
@@ -569,13 +603,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ],
               ),
             ),
-            // Operational badge
+            // Status badge
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 5),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF00D492), Color(0xFF00BBA7)],
-                ),
+                gradient: LinearGradient(colors: badgeGradient),
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
@@ -592,9 +624,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   ),
                 ],
               ),
-              child: const Text(
-                'Operational',
-                style: TextStyle(
+              child: Text(
+                badgeText,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
                   fontFamily: 'Poppins',

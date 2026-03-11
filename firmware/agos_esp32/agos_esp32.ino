@@ -11,11 +11,9 @@
  *   Listens for pump_command messages and drives a relay accordingly.
  *
  * ─── Required Libraries (install via Arduino Library Manager) ────────────────
- *   ArduinoJson        >= 7.x   (Benoit Blanchon)
- *   WebSockets         >= 2.4   (Markus Sattler)   → "WebSockets" by Markus Sattler
- *   BLEDevice          bundled in esp32 Arduino core >= 2.x
- *   OneWire            >= 2.3   (Paul Stoffregen)
- *   DallasTemperature  >= 3.9   (Miles Burton)
+ *   ArduinoJson  >= 7.x  (Benoit Blanchon)
+ *   WebSockets   >= 2.4  (Markus Sattler) → "WebSockets" by Markus Sattler
+ *   BLEDevice    bundled in ESP32 Arduino core — do NOT install external "ESP32 BLE Arduino"
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * ─── Board Setup ─────────────────────────────────────────────────────────────
@@ -23,14 +21,13 @@
  *   Partition scheme : Default (or any that has BLE enabled)
  *
  * ─── Pin Map ─────────────────────────────────────────────────────────────────
- *   PIN_TURBIDITY   GPIO34   Analog input  (0–3.3 V from turbidity sensor)
- *   PIN_PH          GPIO35   Analog input  (0–3.3 V from pH probe board)
- *   PIN_TDS         GPIO32   Analog input  (0–3.3 V from TDS/EC sensor)
- *   PIN_TRIG        GPIO5    Ultrasonic trigger (HC-SR04)
- *   PIN_ECHO        GPIO18   Ultrasonic echo   (HC-SR04)
- *   PIN_DS18B20     GPIO4    OneWire temperature sensor (DS18B20)
- *   PIN_PUMP_RELAY  GPIO26   Relay control (HIGH = pump ON)
- *   PIN_FLOW        GPIO27   Flow sensor interrupt (YF-S201 Hall sensor)
+ *   GPIO34  Analog in  — DFRobot Turbidity Sensor V1.0 (SEN0189, 5 V powered)
+ *                        Voltage divider on output: SIG → 10 kΩ → GPIO34 → 20 kΩ → GND
+ *   GPIO35  Analog in  — PH-4502C PO pin (5 V module; output ≤ 3.3 V for pH > 5.5)
+ *   GPIO32  Analog in  — DFRobot TDS Meter V1.0 A pin (3.3 V powered, direct)
+ *   GPIO5   Digital out — JSN-SR04T V3.0 TRIG (3.3 V signal accepted by sensor)
+ *   GPIO18  Digital in  — JSN-SR04T V3.0 ECHO (5 V signal → divider: ECHO → 1 kΩ → GPIO18 → 2 kΩ → GND)
+ *   GPIO26  Digital out — Relay module IN (HIGH = relay de-energised, NC-COM closed = pump ON)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 #include <Arduino.h>
@@ -44,10 +41,9 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <esp_bt.h>          // esp_bt_controller_mem_release() for deep BLE heap reclaim
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 
 // ════════════════════════════════════════════════════════════════════════════
 // Configuration — edit these to match your install
@@ -64,25 +60,46 @@ const float TANK_HEIGHT_CM   = 200.0f;  // cm from sensor to tank floor
 const float TANK_CAPACITY_L  = 50000.0f; // litres (50 m³)
 
 // Sensor calibration
-const float TURBIDITY_V_MAX  = 3.3f;   // voltage at max turbidity reading
-const float PH_V_OFFSET      = 1.65f;  // voltage at pH 7 (midpoint)
-const float PH_V_PER_PH      = 0.1786f;// voltage change per pH unit (typical)
-const float TDS_VREF         = 3.3f;   // reference voltage for TDS sensor
-const float TDS_TEMP_COEF    = 0.02f;  // temperature coefficient (2% / °C)
+// PH-4502C: calibrate PH_V_OFFSET by dipping probe in pH-7 buffer and adjusting the trim pot.
+// Standard PH-4502C outputs ~2.5 V at pH 7 (trim pot centred). If your reading at pH 7
+// is off by more than ±0.3 pH, adjust the trim pot first, then update this value.
+const float PH_V_OFFSET  = 2.5f;    // output voltage at pH 7 — adjust after calibration
+const float PH_V_PER_PH  = 0.1786f; // V per pH unit (typical for PH-4502C)
+const float TDS_VREF     = 3.3f;    // DFRobot TDS V1.0: powered at 3.3 V
+// Turbidity zero-offset calibration.
+// Dip the probe in clear tap water, note the NTU reading, and set this to that value.
+// This zeroes the baseline so clear water reads ~0 NTU and turbid water reads positive.
+const float TURB_CLEAN_NTU = 1300.0f; // NTU shown in clear water — adjust to match your unit
+// Turbidity scale factor for lab-accurate NTU values.
+// How to calibrate: measure a water sample with a lab turbidimeter (known NTU), submerge the
+// probe in that sample, read the raw sensor NTU (before scale), then set:
+//   TURB_SCALE_FACTOR = lab_NTU / sensor_raw_NTU
+// Example: lab = 55 NTU, sensor raw = 1100 NTU → TURB_SCALE_FACTOR = 55.0 / 1100.0 = 0.05
+const float TURB_SCALE_FACTOR = 0.05f; // tune with an actual lab-measured sample
+
+// Offline auto-pump thresholds — used only when backend WebSocket is disconnected.
+// Keep these consistent with the default settings in the Flutter app.
+const float PUMP_TURB_MIN = 0.0f;    // NTU minimum (0 = any turbidity level is acceptable as low)
+const float PUMP_TURB_MAX = 50.0f;   // NTU maximum
+const float PUMP_PH_MIN   = 6.0f;    // pH minimum
+const float PUMP_PH_MAX   = 9.5f;    // pH maximum
+const float PUMP_TDS_MAX  = 1000.0f; // ppm maximum
+const float TDS_TEMP_COEF = 0.02f;  // TDS temperature coefficient (2 %/°C)
 
 // Timing
 const unsigned long SEND_INTERVAL_MS = 5000;  // 5 s between readings
 const unsigned long RECONN_DELAY_MS  = 5000;  // reconnect delay on WS drop
 
 // Pin assignments
-#define PIN_TURBIDITY   34
-#define PIN_PH          35
-#define PIN_TDS         32
-#define PIN_TRIG         5
-#define PIN_ECHO        18
-#define PIN_DS18B20      4
-#define PIN_PUMP_RELAY  26
-#define PIN_FLOW        27
+#define PIN_TURBIDITY   34   // DFRobot Turbidity V1.0 (via 10kΩ/20kΩ voltage divider)
+#define PIN_PH          35   // PH-4502C PO analog output
+#define PIN_TDS         32   // DFRobot TDS Meter V1.0 (3.3V powered, direct)
+#define PIN_TRIG         5   // JSN-SR04T V3.0 TRIG
+#define PIN_ECHO        18   // JSN-SR04T V3.0 ECHO (via 1kΩ/2kΩ voltage divider)
+#define PIN_PUMP_RELAY    26   // Relay module IN pin
+#define RELAY_ACTIVE_HIGH true  // true = pump wired to NC contact (HIGH de-energises relay,
+                               // NC closes → pump ON). At boot GPIO26 floats LOW → relay
+                               // energises → NC opens → pump stays OFF → no brownout crash.
 
 // BLE UUIDs — must match ble_provisioning_service.dart
 #define BLE_SERVICE_UUID       "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -94,8 +111,6 @@ const unsigned long RECONN_DELAY_MS  = 5000;  // reconnect delay on WS drop
 
 Preferences prefs;
 WebSocketsClient ws;
-OneWire oneWire(PIN_DS18B20);
-DallasTemperature tempSensor(&oneWire);
 
 // Persisted credentials / device identity
 // Hardcoded fallback ID — overwritten by BLE provisioning if app sends one.
@@ -108,14 +123,19 @@ volatile bool g_pumpActive    = false;
 volatile bool g_pumpManual    = false;
 volatile int  g_pumpRemaining = 0;   // seconds remaining in manual mode
 
-// Flow sensor
-volatile uint32_t g_flowPulses = 0;
-unsigned long g_flowLastMs     = 0;
-float         g_flowRate       = 0.0f;  // L/min
+// Set by the BLE callback when the app sends new WiFi credentials while
+// the device is already connected.  The loop() picks this up and reconnects.
+volatile bool g_reconnectWifi = false;
 
 // Timing
 unsigned long g_lastSendMs = 0;
 bool          g_wsConnected = false;
+
+// pH smoothing — Exponential Moving Average across sensor cycles
+// alpha = 0.3: new reading has 30% weight; faster convergence without excessive noise
+// set to -1.0 until first reading taken
+const float PH_EMA_ALPHA = 0.3f;
+float       g_phVoltageEma = -1.0f;  // -1 = uninitialized
 
 // ─────────────────────────── BLE state ──────────────────────────────────────
 BLEServer*         g_bleServer = nullptr;
@@ -145,33 +165,56 @@ String buildDeviceId() {
 // ════════════════════════════════════════════════════════════════════════════
 
 float readTurbidity() {
-  // Average 10 ADC samples to reduce noise
+  // DFRobot Turbidity Sensor V1.0 (SEN0189) powered from 5 V.
+  // Voltage divider (10 kΩ + 20 kΩ) scales 0-4.5 V → 0-3.0 V for the ESP32 ADC.
+  // Reverse the divider to recover the true sensor voltage before applying the formula.
   long sum = 0;
   for (int i = 0; i < 10; i++) { sum += analogRead(PIN_TURBIDITY); delay(2); }
-  float voltage = (sum / 10.0f) * TURBIDITY_V_MAX / 4095.0f;
-  // Linear approximation: 0 V → 3000 NTU, 4.2 V → 0 NTU
-  // Adjust coefficients for your specific turbidity sensor module.
-  float ntu = -1120.4f * voltage * voltage + 5742.3f * voltage - 4352.9f;
+  float adcVoltage    = (sum / 10.0f) * 3.3f / 4095.0f;
+  float sensorVoltage = adcVoltage / 0.667f;  // undo divider: 20/(10+20) = 0.667
+  // DFRobot SEN0189 polynomial for 5 V supply (higher V = cleaner water):
+  float ntu;
+  if (sensorVoltage >= 4.2f) {
+    ntu = 0.0f;
+  } else {
+    ntu = -1120.4f * sensorVoltage * sensorVoltage
+          + 5742.3f * sensorVoltage
+          - 4352.9f;
+  }
+  // Subtract the clean-water baseline so clear water reads ~0 NTU,
+  // then scale to match lab-measured NTU values using TURB_SCALE_FACTOR.
+  // TURB_CLEAN_NTU: offset for your sensor's zero-point in clear water.
+  // TURB_SCALE_FACTOR: multiplier to align with certified turbidimeter readings.
+  ntu = (ntu - TURB_CLEAN_NTU) * TURB_SCALE_FACTOR;
   return constrain(ntu, 0.0f, 3000.0f);
 }
 
 float readPh() {
+  // PH-4502C module powered from 5 V. Output ≈ 2.5 V at pH 7 (higher V → lower pH).
+  // Output > ~3.3 V at pH < 5.5 will saturate the ADC — acceptable for water quality use.
+  // Calibrate: dip probe into pH-7 buffer, adjust on-board trim pot until ADC reads PH_V_OFFSET.
   long sum = 0;
   for (int i = 0; i < 10; i++) { sum += analogRead(PIN_PH); delay(2); }
   float voltage = (sum / 10.0f) * 3.3f / 4095.0f;
-  // pH module output: higher voltage → lower pH
-  float ph = 7.0f + ((PH_V_OFFSET - voltage) / PH_V_PER_PH);
+  // EMA smoothing across cycles — reduces noise from water movement/stirring.
+  // First call: seed EMA with raw reading; subsequent calls: blend in new sample.
+  if (g_phVoltageEma < 0.0f) {
+    g_phVoltageEma = voltage;   // first reading: no history yet
+  } else {
+    g_phVoltageEma = PH_EMA_ALPHA * voltage + (1.0f - PH_EMA_ALPHA) * g_phVoltageEma;
+  }
+  float ph = 7.0f + ((PH_V_OFFSET - g_phVoltageEma) / PH_V_PER_PH);
   return constrain(ph, 0.0f, 14.0f);
 }
 
 float readTds(float temperatureC) {
+  // DFRobot TDS Meter V1.0 — power from 3.3 V (direct ADC, no voltage divider needed).
+  // Uses the DFRobot official polynomial with temperature compensation.
   long sum = 0;
   for (int i = 0; i < 10; i++) { sum += analogRead(PIN_TDS); delay(2); }
   float voltage = (sum / 10.0f) * TDS_VREF / 4095.0f;
-  // Temperature compensation
-  float compensationCoeff = 1.0f + TDS_TEMP_COEF * (temperatureC - 25.0f);
+  float compensationCoeff  = 1.0f + TDS_TEMP_COEF * (temperatureC - 25.0f);
   float compensatedVoltage = voltage / compensationCoeff;
-  // TDS conversion formula (empirical — adjust for your probe)
   float tds = (133.42f * compensatedVoltage * compensatedVoltage * compensatedVoltage
                - 255.86f * compensatedVoltage * compensatedVoltage
                + 857.39f * compensatedVoltage) * 0.5f;
@@ -179,49 +222,40 @@ float readTds(float temperatureC) {
 }
 
 float readTemperature() {
-  tempSensor.requestTemperatures();
-  float t = tempSensor.getTempCByIndex(0);
-  return (t == DEVICE_DISCONNECTED_C) ? 25.0f : t;
+  // No temperature sensor in this build — returns 25 °C for TDS compensation.
+  // To add real compensation: wire a DS18B20 to GPIO4, add OneWire + DallasTemperature
+  // libraries, and replace this function with the sensor read.
+  return 25.0f;
 }
 
 float readTankLevel() {
-  // HC-SR04: trigger a 10 µs pulse and measure echo duration
+  // JSN-SR04T V3.0 — waterproof ultrasonic, same protocol as HC-SR04. Range: 20-600 cm.
+  // ECHO outputs 5 V — use voltage divider (1 kΩ + 2 kΩ) on GPIO18.
+  static float lastValidLevel = -1.0f;  // -1 = no reading yet
+
   digitalWrite(PIN_TRIG, LOW);  delayMicroseconds(2);
   digitalWrite(PIN_TRIG, HIGH); delayMicroseconds(10);
   digitalWrite(PIN_TRIG, LOW);
 
   long duration = pulseIn(PIN_ECHO, HIGH, 30000);  // 30 ms timeout
-  if (duration == 0) return 0.0f;                   // timeout / no echo
+  if (duration == 0) {
+    // No echo — return last known good value to avoid false 0% drops.
+    // On very first read, fall back to 0 (no data yet).
+    return (lastValidLevel >= 0.0f) ? lastValidLevel : 0.0f;
+  }
 
   float distanceCm = duration * 0.0343f / 2.0f;
   // Water height = TANK_HEIGHT_CM - distance to surface
   float waterHeight = TANK_HEIGHT_CM - distanceCm;
-  float levelPct    = (waterHeight / TANK_HEIGHT_CM) * 100.0f;
-  return constrain(levelPct, 0.0f, 100.0f);
+  float levelPct    = constrain((waterHeight / TANK_HEIGHT_CM) * 100.0f, 0.0f, 100.0f);
+  lastValidLevel = levelPct;
+  return levelPct;
 }
 
 float readVolume(float levelPct) {
   return (levelPct / 100.0f) * TANK_CAPACITY_L;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Flow sensor ISR
-// ════════════════════════════════════════════════════════════════════════════
-
-void IRAM_ATTR onFlowPulse() {
-  g_flowPulses++;
-}
-
-void updateFlowRate() {
-  unsigned long now = millis();
-  unsigned long elapsed = now - g_flowLastMs;
-  if (elapsed >= 1000) {
-    // YF-S201: 7.5 pulses per second = 1 L/min
-    g_flowRate = (g_flowPulses / 7.5f) * (1000.0f / elapsed) * 60.0f;
-    g_flowPulses = 0;
-    g_flowLastMs = now;
-  }
-}
 
 // ════════════════════════════════════════════════════════════════════════════
 // Pump control
@@ -229,22 +263,21 @@ void updateFlowRate() {
 
 void setPump(bool on) {
   g_pumpActive = on;
-  digitalWrite(PIN_PUMP_RELAY, on ? HIGH : LOW);
+  bool level = RELAY_ACTIVE_HIGH ? on : !on;
+  digitalWrite(PIN_PUMP_RELAY, level ? HIGH : LOW);
 }
 
 // Call every second (from loop) to count down manual mode
 void tickPumpCountdown() {
   static unsigned long lastTickMs = 0;
   if (!g_pumpManual) return;
+  if (g_pumpRemaining <= 0) return;  // duration=0 → indefinite; no auto-expiry
   if (millis() - lastTickMs < 1000) return;
   lastTickMs = millis();
 
-  if (g_pumpRemaining > 0) {
-    g_pumpRemaining--;
-  }
-  if (g_pumpRemaining <= 0) {
+  g_pumpRemaining--;
+  if (g_pumpRemaining == 0) {
     g_pumpManual  = false;
-    g_pumpRemaining = 0;
     setPump(false);
     Serial.println("[Pump] Manual timer expired → OFF");
   }
@@ -263,7 +296,11 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 
     case WStype_DISCONNECTED:
       g_wsConnected = false;
-      Serial.println("[WS] Disconnected — will reconnect...");
+      Serial.printf("[WS] Disconnected — will reconnect... (heap: %u)\n", ESP.getFreeHeap());
+      break;
+
+    case WStype_ERROR:
+      Serial.printf("[WS] SSL/Socket error (len=%u)\n", length);
       break;
 
     case WStype_TEXT: {
@@ -296,8 +333,8 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 class ProvisioningCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* chr) override {
-    // getValue() returns Arduino String in ESP32 core 3.x
-    std::string rawArduino = chr->getValue();
+    // getValue() returns Arduino String in ESP32 core 3.x — must not assign to std::string directly
+    String rawArduino = chr->getValue();
     if (rawArduino.length() == 0) return;
     std::string raw = rawArduino.c_str();  // convert to std::string for ArduinoJson
 
@@ -339,6 +376,11 @@ class ProvisioningCallbacks : public BLECharacteristicCallbacks {
     chr->setValue(ack);
     chr->notify();
 
+    // If WiFi was already running, signal the loop to reconnect with new creds.
+    if (g_provisioningDone) {
+      g_reconnectWifi = true;
+      Serial.println("[BLE] New WiFi credentials received — will reconnect");
+    }
     g_provisioningDone = true;
   }
 };
@@ -430,6 +472,25 @@ void startWebSocket() {
   Serial.printf("[WS] Configured → wss://%s:%d%s\n", WS_HOST, WS_PORT, WS_PATH);
 }
 
+// Free BLE stack memory once WiFi is established.
+// BLE only needs to run while credentials are missing/wrong.
+// After a successful WiFi connect, we don't need BLE until the user
+// power-cycles the device with incorrect credentials again.
+static bool g_bleDeinited = false;
+void deinitBle() {
+  if (!g_bleDeinited) {
+    Serial.println("[BLE] WiFi up — freeing BLE heap for SSL WebSocket");
+    Serial.flush();
+    BLEDevice::deinit(true);
+    // Release Bluetooth controller memory back to the general heap
+    esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+    g_bleDeinited = true;
+    delay(500);  // let BLE RTOS tasks fully stop before starting SSL
+    Serial.printf("[Heap] Free after BLE deinit: %u bytes\n", ESP.getFreeHeap());
+    Serial.flush();
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Build and send sensor_data JSON
 // ════════════════════════════════════════════════════════════════════════════
@@ -442,12 +503,28 @@ void sendSensorData() {
   float level       = readTankLevel();
   float volume      = readVolume(level);
 
-  // Auto-pump logic (mirrors backend default thresholds)
-  bool autoPump = (turbidity < 10.0f || turbidity > 50.0f)
-               || (ph < 6.0f || ph > 9.5f)
-               || (tds > 1000.0f);
+  // Auto-pump logic — OFFLINE FALLBACK ONLY.
+  // When the backend WebSocket is connected, the backend controls the pump using the
+  // user-configured thresholds from the app settings. The firmware only makes pump
+  // decisions locally when there is no backend connection (e.g. internet outage).
+  //
+  // Offline threshold constants (should loosely match app defaults):
+  //   Turbidity: PUMP_TURB_MIN – PUMP_TURB_MAX NTU
+  //   pH:        PUMP_PH_MIN – PUMP_PH_MAX
+  //   TDS:       < PUMP_TDS_MAX ppm
+  //
+  // Guard: ph clamped to exactly 0.00 or 14.00 usually means probe is in air / not wired.
+  // turbidity=0 is valid (clear water) so it is NOT used as a validity gate.
+  bool sensorsValid = (ph >= 0.5f && ph <= 13.5f);
 
-  if (!g_pumpManual) {
+  bool autoPump = sensorsValid
+               && ((turbidity < PUMP_TURB_MIN || turbidity > PUMP_TURB_MAX)
+                || (ph < PUMP_PH_MIN || ph > PUMP_PH_MAX)
+                || (tds > PUMP_TDS_MAX));
+
+  // Only apply local auto-pump when backend is not connected.
+  // When connected, backend sends pump_command based on app-configured thresholds.
+  if (!g_pumpManual && !g_wsConnected) {
     setPump(autoPump);
   }
 
@@ -457,7 +534,7 @@ void sendSensorData() {
   doc["level"]      = round(level   * 10.0f) / 10.0f;
   doc["volume"]     = round(volume  * 10.0f) / 10.0f;
   doc["capacity"]   = TANK_CAPACITY_L;
-  doc["flow_rate"]  = round(g_flowRate * 10.0f) / 10.0f;
+  doc["flow_rate"]  = 0.0f;  // no flow sensor
   doc["turbidity"]  = round(turbidity  * 100.0f) / 100.0f;
   doc["ph"]         = round(ph         * 100.0f) / 100.0f;
   doc["tds"]        = round(tds        * 10.0f)  / 10.0f;
@@ -467,6 +544,13 @@ void sendSensorData() {
   String payload;
   serializeJson(doc, payload);
   ws.sendTXT(payload);
+
+  // Debug: raw ADC voltages — helpful for wiring/calibration checks.
+  // Expected when probes are in water: Turb ≈ 2.0-3.0V, pH ≈ 2.0-3.0V, TDS ≈ 0.3-1.5V
+  float dbgTurbV = analogRead(PIN_TURBIDITY) * 3.3f / 4095.0f;
+  float dbgPhV   = analogRead(PIN_PH)        * 3.3f / 4095.0f;
+  float dbgTdsV  = analogRead(PIN_TDS)       * 3.3f / 4095.0f;
+  Serial.printf("[ADC] Turb=%.3fV  pH=%.3fV  TDS=%.3fV\n", dbgTurbV, dbgPhV, dbgTdsV);
 
   Serial.printf("[%lu] Level=%.1f%% Turb=%.2f pH=%.2f TDS=%.0f Pump=%s\n",
                 millis() / 1000,
@@ -479,20 +563,20 @@ void sendSensorData() {
 // ════════════════════════════════════════════════════════════════════════════
 
 void setup() {
+  // ── Relay-off first — must happen before delay() or Serial init.
+  //    The relay module's onboard pull-down can activate the coil while
+  //    GPIO26 is still floating (input mode), drawing ~70 mA and triggering
+  //    a brownout that corrupts the flash read on subsequent boots.
+  pinMode(PIN_PUMP_RELAY, OUTPUT);
+  digitalWrite(PIN_PUMP_RELAY, RELAY_ACTIVE_HIGH ? LOW : HIGH);  // relay off
+
   Serial.begin(115200);
-  delay(500);
+  delay(300);
   Serial.println("\n=== AGOS ESP32 Firmware ===");
 
-  // Pin modes
-  pinMode(PIN_TRIG,       OUTPUT);
-  pinMode(PIN_ECHO,       INPUT);
-  pinMode(PIN_PUMP_RELAY, OUTPUT);
-  digitalWrite(PIN_PUMP_RELAY, LOW);  // pump off at boot
-
-  attachInterrupt(digitalPinToInterrupt(PIN_FLOW), onFlowPulse, RISING);
-
-  // Temperature sensor
-  tempSensor.begin();
+  // Pin modes for sensors
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
 
   // Load stored credentials from NVS flash
   prefs.begin("agos", true);
@@ -505,15 +589,18 @@ void setup() {
 
   Serial.printf("[Init] Device ID: %s\n", g_deviceId);
 
-  // If we already have stored WiFi credentials, skip BLE and connect directly
+  // Always start BLE — the app can send new WiFi credentials at any time,
+  // even while the device is already connected to the network.
+  startBleProvisioning();
+
   if (strlen(g_ssid) > 0) {
-    Serial.println("[Init] Stored WiFi credentials found — skipping BLE provisioning");
+    Serial.println("[Init] Stored WiFi credentials found — connecting");
     g_provisioningDone = true;
     connectWifi(g_ssid, g_password);
+    deinitBle();
     startWebSocket();
   } else {
-    Serial.println("[Init] No WiFi credentials — starting BLE provisioning");
-    startBleProvisioning();
+    Serial.println("[Init] No WiFi credentials — waiting for BLE provisioning");
   }
 }
 
@@ -529,10 +616,25 @@ void loop() {
     return;
   }
 
-  // Provisioning just completed → connect WiFi
+  // ── WiFi credential update (new SSID/password sent via BLE) ────────────
+  if (g_reconnectWifi) {
+    g_reconnectWifi = false;
+    ws.disconnect();
+    g_wsConnected = false;
+    WiFi.disconnect(true);
+    delay(500);
+    bool ok = connectWifi(g_ssid, g_password);
+    if (ok) {
+      deinitBle();
+      startWebSocket();
+    }
+  }
+
+  // Connect WiFi if not already connected
   if (WiFi.status() != WL_CONNECTED) {
     bool ok = connectWifi(g_ssid, g_password);
     if (ok) {
+      deinitBle();
       startWebSocket();
     } else {
       delay(RECONN_DELAY_MS);
@@ -545,9 +647,6 @@ void loop() {
 
   // ── Pump countdown ───────────────────────────────────────────────────────
   tickPumpCountdown();
-
-  // ── Flow rate calculation ────────────────────────────────────────────────
-  updateFlowRate();
 
   // ── Send sensor data every SEND_INTERVAL_MS ─────────────────────────────
   unsigned long now = millis();

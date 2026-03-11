@@ -45,6 +45,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       try {
         ref.read(webSocketServiceProvider).connect();
       } catch (_) {}
+
+      // Restore pump UI state after navigation back (pumpStateProvider persists)
+      final pumpState = ref.read(pumpStateProvider);
+      if (pumpState.isManual && pumpState.isOn && mounted) {
+        setState(() {
+          _pumpManualOn = true;
+          _pumpRemainingSeconds = pumpState.remainingSeconds;
+        });
+        if (pumpState.remainingSeconds > 0 &&
+            (_pumpCountdownTimer == null || !_pumpCountdownTimer!.isActive)) {
+          _pumpCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (!mounted) { timer.cancel(); return; }
+            setState(() {
+              if (_pumpRemainingSeconds > 0) {
+                _pumpRemainingSeconds--;
+              } else {
+                _stopPump(expired: true);
+                timer.cancel();
+              }
+            });
+          });
+        }
+      }
     });
   }
 
@@ -98,6 +121,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Connection state
     final isLive = ref.watch(wsConnectedProvider);
     final lastData = ref.watch(wsLastDataProvider);
+
+    // Keep local pump UI in sync with backend state (handles timer expiry,
+    // auto-pump changes, and state restoration after navigation).
+    ref.listen<PumpState>(pumpStateProvider, (_, next) {
+      if (!mounted) return;
+      if (next.isManual && next.isOn) {
+        // Backend confirmed manual pump — sync remaining time
+        final drift = (_pumpRemainingSeconds - next.remainingSeconds).abs();
+        if (!_pumpManualOn || drift > 2) {
+          setState(() {
+            _pumpManualOn = true;
+            _pumpRemainingSeconds = next.remainingSeconds;
+          });
+        }
+      } else if (!next.isOn && _pumpManualOn) {
+        // Backend turned pump off (timer expired or auto-off)
+        _pumpCountdownTimer?.cancel();
+        setState(() {
+          _pumpManualOn = false;
+          _pumpRemainingSeconds = 0;
+        });
+      }
+    });
 
     // Merge: prefer WebSocket live data, fall back to Firestore
     final effectiveTank = (tankData.level > 0 || latest == null)

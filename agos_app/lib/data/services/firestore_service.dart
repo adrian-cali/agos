@@ -94,7 +94,7 @@ class UserThresholds {
   final double levelHigh;     // % — above this triggers full-tank alert
 
   const UserThresholds({
-    this.turbidityMin = 10.0,
+    this.turbidityMin = 0.0,
     this.turbidityMax = 50.0,
     this.turbidityCriticalMin = 5.0,
     this.turbidityCriticalMax = 100.0,

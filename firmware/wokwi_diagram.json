@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "author": "AGOS - Water Monitoring System",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 100,
+      "left": 20,
+      "attrs": {}
+    },
+
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic",
+      "top": -60,
+      "left": -380,
+      "attrs": { "distance": "50" }
+    },
+
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_turbidity",
+      "top": -60,
+      "left": 310,
+      "attrs": { "value": "512" }
+    },
+
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_ph",
+      "top": 120,
+      "left": 310,
+      "attrs": { "value": "512" }
+    },
+
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_tds",
+      "top": 290,
+      "left": 310,
+      "attrs": { "value": "400" }
+    },
+
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay",
+      "top": 340,
+      "left": -400,
+      "attrs": { "transistor": "npn" }
+    },
+
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": 10,
+      "left": -180,
+      "rotate": 90,
+      "attrs": { "value": "1000" }
+    },
+
+    {
+      "type": "wokwi-resistor",
+      "id": "r4",
+      "top": 60,
+      "left": -180,
+      "rotate": 90,
+      "attrs": { "value": "1000" }
+    },
+
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -10,
+      "left": 220,
+      "rotate": 90,
+      "attrs": { "value": "10000" }
+    },
+
+    {
+      "type": "wokwi-resistor",
+      "id": "r2a",
+      "top": 50,
+      "left": 220,
+      "rotate": 90,
+      "attrs": { "value": "10000" }
+    },
+
+    {
+      "type": "wokwi-resistor",
+      "id": "r2b",
+      "top": 110,
+      "left": 220,
+      "rotate": 90,
+      "attrs": { "value": "10000" }
+    },
+
+    {
+      "type": "wokwi-led",
+      "id": "pump_led",
+      "top": 470,
+      "left": -380,
+      "attrs": { "color": "blue" }
+    },
+
+    {
+      "type": "wokwi-resistor",
+      "id": "r_led",
+      "top": 530,
+      "left": -380,
+      "rotate": 90,
+      "attrs": { "value": "220" }
+    }
+  ],
+
+  "connections": [
+    ["esp:GND.2", "esp:GND.1", "black", []],
+
+    ["ultrasonic:VCC",  "esp:VIN",   "red",    []],
+    ["ultrasonic:GND",  "esp:GND.1", "black",  []],
+    ["ultrasonic:TRIG", "esp:D5",    "purple", []],
+    ["ultrasonic:ECHO", "r3:1",      "purple", []],
+    ["r3:2",            "r4:1",      "purple", []],
+    ["r3:2",            "esp:D18",   "purple", []],
+    ["r4:2",            "esp:GND.1", "black",  []],
+
+    ["pot_turbidity:VCC", "esp:VIN",   "red",   []],
+    ["pot_turbidity:GND", "esp:GND.1", "black", []],
+    ["pot_turbidity:SIG", "r1:1",      "green", []],
+    ["r1:2",              "r2a:1",     "green", []],
+    ["r1:2",              "esp:D34",   "green", []],
+    ["r2a:2",             "r2b:1",     "green", []],
+    ["r2b:2",             "esp:GND.1", "black", []],
+
+    ["pot_ph:VCC", "esp:VIN",   "red",  []],
+    ["pot_ph:GND", "esp:GND.1", "black",[]],
+    ["pot_ph:SIG", "esp:D35",   "pink", []],
+
+    ["pot_tds:VCC", "esp:3V3",   "orange",[]],
+    ["pot_tds:GND", "esp:GND.1", "black", []],
+    ["pot_tds:SIG", "esp:D32",   "blue",  []],
+
+    ["relay:VCC", "esp:VIN",   "red",    []],
+    ["relay:GND", "esp:GND.1", "black",  []],
+    ["relay:IN",  "esp:D26",   "yellow", []],
+    ["relay:COM", "esp:VIN",   "red",    []],
+    ["relay:NO",  "pump_led:A","green",  []],
+    ["pump_led:K","r_led:1",   "green",  []],
+    ["r_led:2",   "esp:GND.1", "black",  []]
+  ]
+}

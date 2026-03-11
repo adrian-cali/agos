@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AGOS ESP32 Wiring Guide</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0f172a; font-family: 'Segoe UI', Arial, sans-serif; padding: 24px 16px; color: #e2e8f0; }
+h1  { text-align: center; font-size: 1.5rem; margin-bottom: 4px; }
+.sub { text-align: center; color: #94a3b8; font-size: .9rem; margin-bottom: 28px; }
+section { max-width: 1040px; margin: 0 auto 36px; }
+h2 { font-size: .95rem; font-weight: 700; letter-spacing: .06em; color: #38bdf8; text-transform: uppercase; margin-bottom: 14px; border-bottom: 1px solid #1e3a5f; padding-bottom: 6px; }
+
+/* Power cards */
+.row { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+.pcard { background: #1e293b; border-radius: 12px; padding: 18px 20px; flex: 1; min-width: 250px; }
+.pcard h3 { font-size: .9rem; color: #7dd3fc; margin-bottom: 10px; }
+.pcard p { font-size: .85rem; line-height: 1.7; color: #cbd5e1; }
+.pcard ul { padding-left: 18px; font-size: .85rem; line-height: 1.9; color: #cbd5e1; }
+
+/* Sensor cards */
+.sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 18px; }
+.scard { border-radius: 12px; padding: 16px 18px; }
+.scard h3 { font-size: .95rem; font-weight: 700; margin-bottom: 3px; }
+.scard .sub2 { font-size: .78rem; opacity: .65; margin-bottom: 14px; }
+
+/* Wire connection rows */
+.wr { display: flex; align-items: center; gap: 0; margin-bottom: 9px; font-size: .84rem; flex-wrap: wrap; row-gap: 6px; }
+.pb { background: #0f1e2e; border: 1.5px solid #334155; border-radius: 6px; padding: 5px 10px; font-family: monospace; font-size: .78rem; white-space: nowrap; text-align: center; min-width: 80px; }
+.pb.esp  { border-color: #3b82f6; color: #93c5fd; }
+.pb.v5   { border-color: #ef4444; color: #fca5a5; }
+.pb.v33  { border-color: #fb923c; color: #fed7aa; }
+.pb.gnd  { border-color: #475569; color: #94a3b8; }
+.pb.sen  { border-color: #64748b; color: #e2e8f0; }
+.pb.res  { border-color: #ca8a04; color: #fde047; background: #1c1200; font-weight: 700; }
+.wl { flex: 1; height: 3px; min-width: 10px; border-radius: 2px; }
+.wa { font-size: 1rem; line-height: 1; padding: 0 2px; }
+.wlabel { margin-left: 10px; font-size: .76rem; font-weight: 600; }
+
+/* Voltage divider diagrams */
+.vd { background: #0a1628; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: .82rem; color: #64748b; margin: 10px 0; line-height: 2; }
+.vd .h { color: #fde047; }
+.vd .g { color: #4ade80; }
+.vd .b { color: #60a5fa; }
+.vd .p { color: #c084fc; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+thead tr { background: #1e3a5f; }
+thead th { padding: 9px 12px; text-align: left; font-weight: 700; color: #7dd3fc; }
+tbody tr { border-bottom: 1px solid #1e293b; }
+tbody tr:nth-child(odd)  { background: #0f1e2e; }
+tbody tr:nth-child(even) { background: #111f30; }
+td { padding: 8px 12px; vertical-align: middle; }
+.dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+/* Notes */
+.note { background: #1e293b; border-left: 4px solid; border-radius: 8px; padding: 10px 14px; font-size: .83rem; color: #cbd5e1; margin-bottom: 12px; line-height: 1.7; }
+.note.warn { border-color: #f59e0b; }
+.note.info { border-color: #3b82f6; }
+.note.ok   { border-color: #22c55e; }
+</style>
+</head>
+<body>
+
+<h1>⚡ AGOS ESP32 · Complete Wiring Guide</h1>
+<p class="sub">All sensors · resistors · external 5 V power · NodeMCU 38-pin</p>
+
+<!-- ──────────────────────────────── POWER SETUP -->
+<section>
+<h2>1 · Power Setup</h2>
+<div class="row">
+
+  <div class="pcard">
+    <h3>🔌 Your 5V/3A Power Supply → Breadboard</h3>
+    <p>Your 5V/3A supply has plenty of capacity (ESP32 + all sensors together draw ≈ 400–500 mA max). Connect the output terminals to the breadboard power rails.</p>
+    <br>
+    <ul>
+      <li><span style="color:#f87171;font-weight:600">Red/+ wire</span> → Breadboard <strong>red (+) power rail</strong></li>
+      <li><span style="color:#94a3b8;font-weight:600">Black/− wire</span> → Breadboard <strong>blue (−) power rail</strong></li>
+    </ul>
+    <br>
+    <p style="color:#64748b;font-size:.8rem">The red rail on the breadboard is now 5V. The blue rail is GND (ground).</p>
+  </div>
+
+  <div class="pcard">
+    <h3>⚙️ Power the ESP32 from the breadboard</h3>
+    <ul>
+      <li>Red jumper wire: breadboard <strong>5V(+) rail</strong> → ESP32 <strong>VIN pin</strong></li>
+      <li>Black jumper wire: breadboard <strong>GND(−) rail</strong> → ESP32 <strong>GND pin</strong></li>
+    </ul>
+    <br>
+    <p>The ESP32 converts 5V → 3.3V internally. With your 3A supply this is very stable — no separate USB cable needed for the ESP32.</p>
+  </div>
+
+  <div class="pcard">
+    <h3>🟠 TDS Sensor needs 3.3V (special!)</h3>
+    <p>This is the only sensor that must NOT use the 5V rail. It needs 3.3V from the ESP32.</p>
+    <br>
+    <ul>
+      <li><span style="color:#fb923c;font-weight:600">Orange wire</span>: ESP32 <strong>3V3 pin</strong> → TDS sensor <strong>VCC</strong></li>
+    </ul>
+    <br>
+    <p style="color:#ef4444;font-size:.82rem;font-weight:600">⚠ Using 5V on the TDS sensor will damage it permanently.</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ──────────────────────────────── SENSOR WIRING -->
+<section>
+<h2>2 · Sensor Wiring — One Sensor at a Time</h2>
+<p style="font-size:.85rem;color:#94a3b8;margin-bottom:16px">Each card shows pin-by-pin connections. Arrow (→) shows wire direction. Resistors in yellow are needed in the middle of the wire.</p>
+
+<div class="sensor-grid">
+
+  <!-- TDS METER -->
+  <div class="scard" style="background:#0f2010;border:2px solid #fb923c;">
+    <h3 style="color:#fed7aa">TDS Meter V1.0</h3>
+    <p class="sub2">Dissolved solids sensor · DFRobot · uses 3.3V only</p>
+
+    <div class="wr">
+      <div class="pb v33">ESP32 3V3</div>
+      <div class="wl" style="background:#fb923c"></div>
+      <div class="wa" style="color:#fb923c">→</div>
+      <div class="wl" style="background:#fb923c"></div>
+      <div class="pb sen">TDS VCC</div>
+      <span class="wlabel" style="color:#fb923c">Orange wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb gnd">GND rail</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="wa" style="color:#475569">→</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="pb sen">TDS GND</div>
+      <span class="wlabel" style="color:#94a3b8">Black wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb sen">TDS A (signal)</div>
+      <div class="wl" style="background:#60a5fa"></div>
+      <div class="wa" style="color:#60a5fa">→</div>
+      <div class="wl" style="background:#60a5fa"></div>
+      <div class="pb esp">GPIO 32</div>
+      <span class="wlabel" style="color:#60a5fa">Blue wire · no resistor needed</span>
+    </div>
+  </div>
+
+  <!-- PH SENSOR -->
+  <div class="scard" style="background:#200a0a;border:2px solid #ef4444;">
+    <h3 style="color:#fecaca">PH-4502C pH Sensor</h3>
+    <p class="sub2">pH measurement board · 5V powered · has blue trim-pot for calibration</p>
+
+    <div class="wr">
+      <div class="pb v5">5V rail (+)</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="wa" style="color:#ef4444">→</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="pb sen">pH VCC</div>
+      <span class="wlabel" style="color:#f87171">Red wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb gnd">GND rail</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="wa" style="color:#475569">→</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="pb sen">pH GND</div>
+      <span class="wlabel" style="color:#94a3b8">Black wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb sen">pH PO (signal)</div>
+      <div class="wl" style="background:#f9a8d4"></div>
+      <div class="wa" style="color:#f9a8d4">→</div>
+      <div class="wl" style="background:#f9a8d4"></div>
+      <div class="pb esp">GPIO 35</div>
+      <span class="wlabel" style="color:#f9a8d4">Pink wire · no resistor needed</span>
+    </div>
+
+    <p style="font-size:.78rem;color:#64748b;margin-top:8px">Use the PO (analog output) pin only. Calibrate with buffer solutions using the blue trim-pot.</p>
+  </div>
+
+  <!-- TURBIDITY -->
+  <div class="scard" style="background:#052810;border:2px solid #16a34a;">
+    <h3 style="color:#bbf7d0">Turbidity SEN0189</h3>
+    <p class="sub2">Water clarity sensor · DFRobot · 5V powered · signal needs voltage divider</p>
+
+    <div class="wr">
+      <div class="pb v5">5V rail (+)</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="wa" style="color:#ef4444">→</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="pb sen">Turb VCC</div>
+      <span class="wlabel" style="color:#f87171">Red wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb gnd">GND rail</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="wa" style="color:#475569">→</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="pb sen">Turb GND</div>
+      <span class="wlabel" style="color:#94a3b8">Black wire</span>
+    </div>
+
+    <p style="font-size:.82rem;color:#4ade80;margin:8px 0 4px;font-weight:600">Signal path with voltage divider:</p>
+    <div class="wr" style="gap:6px">
+      <div class="pb sen">Turb SIG</div>
+      <div class="wl" style="background:#4ade80;min-width:8px"></div>
+      <span style="color:#4ade80;font-size:.8rem">→</span>
+      <div class="pb res">R1 (10kΩ)</div>
+      <span style="color:#4ade80;font-size:.8rem">→</span>
+      <div class="pb esp">GPIO 34</div>
+    </div>
+    <div class="wr" style="gap:6px;margin-top:2px">
+      <span style="color:#64748b;font-size:.75rem;min-width:60px">† same node ↓</span>
+      <div class="pb res">R2a (10kΩ)</div>
+      <span style="color:#4ade80;font-size:.8rem">→</span>
+      <div class="pb res">R2b (10kΩ)</div>
+      <span style="color:#94a3b8;font-size:.8rem">→</span>
+      <div class="pb gnd">GND rail</div>
+    </div>
+    <p style="font-size:.77rem;color:#64748b;margin-top:8px">† The junction between R1 and R2a connects to GPIO34 AND continues down through R2a+R2b to GND. Three separate resistors, all on the breadboard.</p>
+  </div>
+
+  <!-- JSN-SR04T -->
+  <div class="scard" style="background:#0f0820;border:2px solid #7c3aed;">
+    <h3 style="color:#ddd6fe">JSN-SR04T V3.0</h3>
+    <p class="sub2">Ultrasonic water level sensor · 5V powered · ECHO needs voltage divider</p>
+
+    <div class="wr">
+      <div class="pb v5">5V rail (+)</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="wa" style="color:#ef4444">→</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="pb sen">JSN VCC</div>
+      <span class="wlabel" style="color:#f87171">Red wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb gnd">GND rail</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="wa" style="color:#475569">→</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="pb sen">JSN GND</div>
+      <span class="wlabel" style="color:#94a3b8">Black wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb esp">GPIO 5</div>
+      <div class="wl" style="background:#c084fc"></div>
+      <div class="wa" style="color:#c084fc">→</div>
+      <div class="wl" style="background:#c084fc"></div>
+      <div class="pb sen">JSN TRIG</div>
+      <span class="wlabel" style="color:#c084fc">Purple wire · direct, no resistor</span>
+    </div>
+
+    <p style="font-size:.82rem;color:#c084fc;margin:8px 0 4px;font-weight:600">ECHO path with voltage divider:</p>
+    <div class="wr" style="gap:6px">
+      <div class="pb sen">JSN ECHO</div>
+      <span style="color:#c084fc;font-size:.8rem">→</span>
+      <div class="pb res">R3 (1kΩ)</div>
+      <span style="color:#c084fc;font-size:.8rem">→</span>
+      <div class="pb esp">GPIO 18</div>
+    </div>
+    <div class="wr" style="gap:6px;margin-top:2px">
+      <span style="color:#64748b;font-size:.75rem;min-width:60px">† same node ↓</span>
+      <div class="pb res">R4 (1kΩ)</div>
+      <span style="color:#94a3b8;font-size:.8rem">→</span>
+      <div class="pb gnd">GND rail</div>
+    </div>
+    <p style="font-size:.77rem;color:#64748b;margin-top:8px">† Junction between R3 and R4 connects to GPIO18. R4 goes from GPIO18 node down to GND.</p>
+  </div>
+
+  <!-- RELAY -->
+  <div class="scard" style="background:#1a1000;border:2px solid #d97706;">
+    <h3 style="color:#fef3c7">Relay Module — Songle SLA-05VDC</h3>
+    <p class="sub2">Controls the water pump · 5V coil · 3 screw terminals for pump</p>
+
+    <div class="wr">
+      <div class="pb v5">5V rail (+)</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="wa" style="color:#ef4444">→</div>
+      <div class="wl" style="background:#ef4444"></div>
+      <div class="pb sen">Relay VCC</div>
+      <span class="wlabel" style="color:#f87171">Red wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb gnd">GND rail</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="wa" style="color:#475569">→</div>
+      <div class="wl" style="background:#475569"></div>
+      <div class="pb sen">Relay GND</div>
+      <span class="wlabel" style="color:#94a3b8">Black wire</span>
+    </div>
+
+    <div class="wr">
+      <div class="pb esp">GPIO 26</div>
+      <div class="wl" style="background:#fde047"></div>
+      <div class="wa" style="color:#fde047">→</div>
+      <div class="wl" style="background:#fde047"></div>
+      <div class="pb sen">Relay IN</div>
+      <span class="wlabel" style="color:#fde047">Yellow wire</span>
+    </div>
+
+    <div style="background:#0a0800;border-radius:8px;padding:10px 12px;margin-top:10px;">
+      <p style="color:#fcd34d;font-weight:600;font-size:.83rem;margin-bottom:6px">Water Pump → Screw Terminals:</p>
+      <p style="color:#cbd5e1;font-size:.83rem">Pump wire A → <strong style="color:#4ade80">COM</strong></p>
+      <p style="color:#cbd5e1;font-size:.83rem">Pump wire B → <strong style="color:#4ade80">NC</strong> (Normally Closed)</p>
+      <p style="color:#64748b;font-size:.75rem;margin-top:6px">NO terminal is not used. GPIO26 HIGH = relay de-energised = NC closed = pump ON.<br>At boot GPIO26 floats LOW → relay energises → NC opens → pump stays OFF (no brownout).</p>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<!-- ──────────────────────────────── RESISTOR GUIDE -->
+<section>
+<h2>3 · Resistor Placement Guide</h2>
+<div class="row">
+
+  <div class="pcard">
+    <h3 style="color:#fde047">R1 + R2a + R2b · Turbidity Signal Divider</h3>
+    <p>The turbidity sensor signal can reach 4.5V but the ESP32's GPIO pins only accept up to 3.3V. Three 10kΩ resistors reduce the voltage safely.</p>
+    <div class="vd">
+<span class="h">SIG ─── R1(10kΩ) ───●─── GPIO34</span>
+                       <span class="h">│</span>
+                    <span class="g">R2a(10kΩ)</span>
+                       <span class="h">│</span>
+                    <span class="g">R2b(10kΩ)</span>
+                       <span class="h">│</span>
+                    <span class="b">GND rail</span>
+    </div>
+    <p style="font-size:.82rem">Place R1 in series on SIG wire. The junction between R1 and GPIO34 also connects to R2a. R2a and R2b go end-to-end down to GND. Use 3 separate 10kΩ resistors.</p>
+    <p style="margin-top:8px;color:#fde047;font-size:.83rem;font-weight:600">Buy: 3× 10kΩ (Brown-Black-Orange-Gold)</p>
+  </div>
+
+  <div class="pcard">
+    <h3 style="color:#93c5fd">R3 + R4 · JSN-SR04T ECHO Divider</h3>
+    <p>The ECHO pin goes to 5V when detecting a pulse. Two equal 1kΩ resistors split that to 2.5V, which is safe for GPIO18.</p>
+    <div class="vd">
+<span class="h">ECHO ─── R3(1kΩ) ───●─── GPIO18</span>
+                        <span class="h">│</span>
+                     <span class="p">R4(1kΩ)</span>
+                        <span class="h">│</span>
+                     <span class="b">GND rail</span>
+    </div>
+    <p style="font-size:.82rem">R3 goes between ECHO and a breadboard row. That same breadboard row connects to GPIO18 and to R4. R4's other end goes to GND.</p>
+    <p style="margin-top:8px;color:#93c5fd;font-size:.83rem;font-weight:600">Buy: 2× 1kΩ (Brown-Black-Red-Gold)</p>
+  </div>
+
+  <div class="pcard">
+    <h3 style="color:#4ade80">Shopping List · Total Resistors</h3>
+    <table style="margin-top:4px">
+      <thead><tr><th>Qty</th><th>Value</th><th>Color Bands</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td>3×</td><td style="color:#fde047;font-weight:600">10 kΩ</td><td>Brown-Black-Orange-Gold</td><td>R1, R2a, R2b (Turbidity)</td></tr>
+        <tr><td>2×</td><td style="color:#93c5fd;font-weight:600">1 kΩ</td><td>Brown-Black-Red-Gold</td><td>R3, R4 (JSN-SR04T ECHO)</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.82rem;margin-top:10px">Standard ¼-watt carbon film resistors work fine. Available at any electronics store or AliExpress.</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ──────────────────────────────── FULL TABLE -->
+<section>
+<h2>4 · All Connections at a Glance</h2>
+<table>
+  <thead><tr><th>From</th><th>To</th><th>Color</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>5V USB Adapter (+)</td><td>Breadboard red (+) rail</td><td><span class="dot" style="background:#ef4444"></span>Red</td><td>Main power in</td></tr>
+    <tr><td>5V USB Adapter (−)</td><td>Breadboard blue (−) rail</td><td><span class="dot" style="background:#475569"></span>Black</td><td>Common ground</td></tr>
+    <tr><td>Breadboard 5V rail</td><td>ESP32 VIN</td><td><span class="dot" style="background:#ef4444"></span>Red</td><td>Powers ESP32 via 3.3V LDO</td></tr>
+    <tr><td>Breadboard GND rail</td><td>ESP32 GND</td><td><span class="dot" style="background:#475569"></span>Black</td><td></td></tr>
+    <tr><td colspan="4" style="background:#0a1628;color:#334155;font-size:.78rem;padding:4px 12px">— TDS Meter —</td></tr>
+    <tr><td>ESP32 <b>3V3</b></td><td>TDS VCC</td><td><span class="dot" style="background:#fb923c"></span>Orange</td><td>⚠ 3.3V only!</td></tr>
+    <tr><td>GND rail</td><td>TDS GND</td><td><span class="dot" style="background:#475569"></span>Black</td><td></td></tr>
+    <tr><td>TDS A</td><td>ESP32 GPIO32</td><td><span class="dot" style="background:#60a5fa"></span>Blue</td><td>Direct, no resistor</td></tr>
+    <tr><td colspan="4" style="background:#0a1628;color:#334155;font-size:.78rem;padding:4px 12px">— pH Sensor —</td></tr>
+    <tr><td>5V rail</td><td>pH VCC</td><td><span class="dot" style="background:#ef4444"></span>Red</td><td></td></tr>
+    <tr><td>GND rail</td><td>pH GND</td><td><span class="dot" style="background:#475569"></span>Black</td><td></td></tr>
+    <tr><td>pH PO</td><td>ESP32 GPIO35</td><td><span class="dot" style="background:#f9a8d4"></span>Pink</td><td>Direct, no resistor</td></tr>
+    <tr><td colspan="4" style="background:#0a1628;color:#334155;font-size:.78rem;padding:4px 12px">— Turbidity Sensor —</td></tr>
+    <tr><td>5V rail</td><td>Turb VCC</td><td><span class="dot" style="background:#ef4444"></span>Red</td><td></td></tr>
+    <tr><td>GND rail</td><td>Turb GND</td><td><span class="dot" style="background:#475569"></span>Black</td><td></td></tr>
+    <tr><td>Turb SIG</td><td>R1 (10kΩ) leg A</td><td><span class="dot" style="background:#4ade80"></span>Green</td><td rowspan="4" style="color:#94a3b8;font-size:.8rem">Divider: 5V → 1.67V on GPIO34</td></tr>
+    <tr><td>R1 leg B = R2a leg A</td><td>ESP32 GPIO34</td><td><span class="dot" style="background:#4ade80"></span>Green</td></tr>
+    <tr><td>R2a leg B → R2b leg A</td><td>in series on breadboard</td><td>—</td></tr>
+    <tr><td>R2b leg B</td><td>GND rail</td><td><span class="dot" style="background:#475569"></span>Black</td></tr>
+    <tr><td colspan="4" style="background:#0a1628;color:#334155;font-size:.78rem;padding:4px 12px">— JSN-SR04T Ultrasonic —</td></tr>
+    <tr><td>5V rail</td><td>JSN VCC</td><td><span class="dot" style="background:#ef4444"></span>Red</td><td></td></tr>
+    <tr><td>GND rail</td><td>JSN GND</td><td><span class="dot" style="background:#475569"></span>Black</td><td></td></tr>
+    <tr><td>ESP32 GPIO5</td><td>JSN TRIG</td><td><span class="dot" style="background:#c084fc"></span>Purple</td><td>Direct, no resistor</td></tr>
+    <tr><td>JSN ECHO</td><td>R3 (1kΩ) leg A</td><td><span class="dot" style="background:#c084fc"></span>Purple</td><td rowspan="3" style="color:#94a3b8;font-size:.8rem">Divider: 5V → 2.5V on GPIO18</td></tr>
+    <tr><td>R3 leg B = R4 leg A</td><td>ESP32 GPIO18</td><td><span class="dot" style="background:#c084fc"></span>Purple</td></tr>
+    <tr><td>R4 leg B</td><td>GND rail</td><td><span class="dot" style="background:#475569"></span>Black</td></tr>
+    <tr><td colspan="4" style="background:#0a1628;color:#334155;font-size:.78rem;padding:4px 12px">— Relay Module —</td></tr>
+    <tr><td>5V rail</td><td>Relay VCC</td><td><span class="dot" style="background:#ef4444"></span>Red</td><td></td></tr>
+    <tr><td>GND rail</td><td>Relay GND</td><td><span class="dot" style="background:#475569"></span>Black</td><td></td></tr>
+    <tr><td>ESP32 GPIO26</td><td>Relay IN</td><td><span class="dot" style="background:#fde047"></span>Yellow</td><td>LOW = pump ON</td></tr>
+    <tr><td>Pump wire A</td><td>Relay COM terminal</td><td>—</td><td rowspan="2">Pump between COM and NO</td></tr>
+    <tr><td>Pump wire B</td><td>Relay NO terminal</td><td>—</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ──────────────────────────────── NOTES -->
+<section>
+<h2>5 · Important Notes</h2>
+
+<div class="note warn">
+  <strong>⚠ TDS Sensor — 3.3V only, never 5V!</strong><br>
+  Power TDS from the ESP32's 3V3 output pin only. Connecting 5V will permanently damage the sensor.
+</div>
+
+<div class="note ok">
+  <strong>✅ Your 5V/3A supply is more than enough</strong><br>
+  ESP32 + all 5 sensors + relay together draw about 400–500 mA peak. Your 3A supply has plenty of headroom — power everything from a single supply via the breadboard rails.
+</div>
+
+<div class="note info">
+  <strong>ℹ Bridge the two GND rails on the breadboard</strong><br>
+  A standard full-size breadboard has two separate GND rows (left and right). They are NOT internally connected. Use a short jumper to bridge them so all components share the same ground.
+</div>
+
+<div class="note info">
+  <strong>ℹ pH calibration</strong><br>
+  Use pH buffer solutions (pH 4 and pH 7) to calibrate. At pH 7, turn the blue trim-pot until the PO pin reads 2.5V. The firmware offset constant is <code>PH_V_OFFSET = 2.5f</code>.
+</div>
+
+<div class="note ok">
+  <strong>✅ Relay logic in firmware: RELAY_ACTIVE_HIGH = false</strong><br>
+  GPIO26 set LOW by the firmware = relay energized = pump ON. GPIO26 HIGH = pump OFF.
+</div>
+</section>
+
+<p style="text-align:center;color:#1e3a5f;font-size:.8rem;margin-top:12px;margin-bottom:40px">
+  AGOS Water Monitoring System · firmware/agos_esp32/agos_esp32.ino
+</p>
+
+</body>
+</html>
