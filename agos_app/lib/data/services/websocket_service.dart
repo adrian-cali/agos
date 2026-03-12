@@ -327,6 +327,34 @@ class WebSocketService {
     });
   }
 
+  /// Toggle UV steriliser lamp.
+  void sendUvCommand({required bool on}) {
+    send({'type': 'uv_command', 'action': on ? 'on' : 'off'});
+  }
+
+  /// Manual bypass pump trigger. [durationSeconds] = 0 uses server default schedule duration.
+  void sendBypassCommand({required bool on, int durationSeconds = 0}) {
+    send({
+      'type': 'bypass_command',
+      'action': on ? 'on' : 'off',
+      'duration_seconds': durationSeconds,
+    });
+  }
+
+  /// Save the daily bypass schedule. [durationMinutes] = 0 leaves existing duration.
+  void sendBypassSchedule({
+    required int hour,
+    required int minute,
+    required int durationMinutes,
+  }) {
+    send({
+      'type': 'bypass_schedule',
+      'hour': hour,
+      'minute': minute,
+      'duration_minutes': durationMinutes,
+    });
+  }
+
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -1121,6 +1149,129 @@ final pumpStateProvider =
         final bool manual = pumpData['manual'] == true;
         final int remaining = (pumpData['remaining_seconds'] ?? 0) as int;
         notifier.update(PumpState(isOn: on, isManual: manual, remainingSeconds: remaining));
+      }
+    }
+  });
+  return notifier;
+});
+
+// ============= UV State =============
+
+class UvState {
+  final bool isOn;
+  const UvState({this.isOn = true});  // default UV ON
+  UvState copyWith({bool? isOn}) => UvState(isOn: isOn ?? this.isOn);
+}
+
+class UvStateNotifier extends StateNotifier<UvState> {
+  UvStateNotifier() : super(const UvState());
+  void setOn(bool on) => state = UvState(isOn: on);
+}
+
+final uvStateProvider = StateNotifierProvider<UvStateNotifier, UvState>((ref) {
+  final notifier = UvStateNotifier();
+  final ws = ref.watch(webSocketServiceProvider);
+  ws.addListener((data) {
+    final type = data['type'];
+    if (type == 'uv_update') {
+      notifier.setOn(data['uv_on'] == true);
+    } else if (type == 'state_snapshot') {
+      final uvData = data['uv'] as Map<String, dynamic>?;
+      if (uvData != null) {
+        notifier.setOn(uvData['on'] == true);
+      }
+    }
+  });
+  return notifier;
+});
+
+// ============= Bypass State =============
+
+class BypassSchedule {
+  final int hour;          // 0-23
+  final int minute;        // 0-59
+  final int durationMinutes;
+
+  const BypassSchedule({
+    this.hour = 2,
+    this.minute = 0,
+    this.durationMinutes = 30,
+  });
+
+  BypassSchedule copyWith({int? hour, int? minute, int? durationMinutes}) {
+    return BypassSchedule(
+      hour: hour ?? this.hour,
+      minute: minute ?? this.minute,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
+    );
+  }
+}
+
+class BypassState {
+  final bool isPumpOn;
+  final BypassSchedule schedule;
+  final String? lastRun;  // ISO-8601 or null
+
+  const BypassState({
+    this.isPumpOn = false,
+    this.schedule = const BypassSchedule(),
+    this.lastRun,
+  });
+
+  BypassState copyWith({bool? isPumpOn, BypassSchedule? schedule, String? lastRun}) {
+    return BypassState(
+      isPumpOn: isPumpOn ?? this.isPumpOn,
+      schedule: schedule ?? this.schedule,
+      lastRun: lastRun ?? this.lastRun,
+    );
+  }
+}
+
+class BypassStateNotifier extends StateNotifier<BypassState> {
+  BypassStateNotifier() : super(const BypassState());
+
+  void setPumpOn(bool on) => state = state.copyWith(isPumpOn: on);
+
+  void updateSchedule(BypassSchedule s) => state = state.copyWith(schedule: s);
+
+  void update(BypassState newState) => state = newState;
+}
+
+final bypassStateProvider =
+    StateNotifierProvider<BypassStateNotifier, BypassState>((ref) {
+  final notifier = BypassStateNotifier();
+  final ws = ref.watch(webSocketServiceProvider);
+  ws.addListener((data) {
+    final type = data['type'];
+    if (type == 'bypass_update') {
+      final bool on = data['bypass_pump_on'] == true;
+      final String? lastRun = data['last_run'] as String?;
+      notifier.update(notifier.state.copyWith(isPumpOn: on, lastRun: lastRun));
+    } else if (type == 'bypass_schedule_update') {
+      final sched = data['schedule'] as Map<String, dynamic>?;
+      if (sched != null) {
+        notifier.updateSchedule(BypassSchedule(
+          hour: (sched['hour'] ?? 2) as int,
+          minute: (sched['minute'] ?? 0) as int,
+          durationMinutes: ((sched['duration_seconds'] ?? 1800) as int) ~/ 60,
+        ));
+      }
+    } else if (type == 'state_snapshot') {
+      final bypassData = data['bypass'] as Map<String, dynamic>?;
+      if (bypassData != null) {
+        final sched = bypassData['schedule'] as Map<String, dynamic>?;
+        final schedule = sched != null
+            ? BypassSchedule(
+                hour: (sched['hour'] ?? 2) as int,
+                minute: (sched['minute'] ?? 0) as int,
+                durationMinutes: ((sched['duration_seconds'] ?? 1800) as int) ~/ 60,
+              )
+            : const BypassSchedule();
+        notifier.update(BypassState(
+          isPumpOn: bypassData['pump_on'] == true,
+          schedule: schedule,
+          lastRun: bypassData['last_run'] as String?,
+        ));
       }
     }
   });

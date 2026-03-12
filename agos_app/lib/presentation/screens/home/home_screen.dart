@@ -90,7 +90,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   /// Wraps [child] with a staggered slide-up + fade-in animation.
   /// [index] (0, 1, 2, …) determines the start offset of the interval.
   Widget _buildAnimated(int index, Widget child) {
-    const total = 4; // number of animated sections
+    const total = 6; // number of animated sections
     final start = (index / total).clamp(0.0, 0.8);
     final animation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
@@ -180,8 +180,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     // Pump Control card
                     _buildAnimated(2, _buildPumpCard()),
                     const SizedBox(height: 25),
+                    // UV Steriliser card
+                    _buildAnimated(3, _buildUvCard()),
+                    const SizedBox(height: 25),
+                    // Bypass Schedule card
+                    _buildAnimated(4, _buildBypassCard()),
+                    const SizedBox(height: 25),
                     // AGOS logo at bottom
-                    _buildAnimated(3, _buildBottomLogo()),
+                    _buildAnimated(5, _buildBottomLogo()),
                     const SizedBox(height: 100), // Space for bottom nav
                   ],
                 ),
@@ -1334,6 +1340,526 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           ),
         ],
       ),
+    );
+  }
+
+  // ─── UV Steriliser Card ──────────────────────────────────────────────────
+
+  Widget _buildUvCard() {
+    final uvState = ref.watch(uvStateProvider);
+    final bool uvOn = uvState.isOn;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFFFFD700).withValues(alpha: 0.25),
+                      const Color(0xFFFF8C00).withValues(alpha: 0.25),
+                    ],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.wb_sunny_outlined,
+                  color: Color(0xFFFFB300),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'UV Steriliser',
+                      style: TextStyle(
+                        color: Color(0xFF2C3E50),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    Text(
+                      'UV-C lamp in holding tank',
+                      style: TextStyle(
+                        color: Color(0xFF7F8C8D),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Toggle switch
+              Transform.scale(
+                scale: 0.9,
+                child: Switch(
+                  value: uvOn,
+                  activeColor: const Color(0xFFFFB300),
+                  onChanged: (val) {
+                    ref.read(webSocketServiceProvider).sendUvCommand(on: val);
+                    ref.read(uvStateProvider.notifier).setOn(val);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Status row
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: uvOn ? const Color(0xFFFFB300) : const Color(0xFF9E9E9E),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  uvOn
+                      ? 'UV sterilisation active — water in holding tank is being treated'
+                      : 'UV lamp is OFF — tap toggle to enable sterilisation',
+                  style: TextStyle(
+                    color: const Color(0xFF7F8C8D).withValues(alpha: 0.85),
+                    fontSize: 11,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Bypass Schedule Card ────────────────────────────────────────────────
+
+  Widget _buildBypassCard() {
+    final bypassState = ref.watch(bypassStateProvider);
+    final sched = bypassState.schedule;
+    final bool pumpOn = bypassState.isPumpOn;
+    final String? lastRun = bypassState.lastRun;
+
+    String nextRunLabel() {
+      final h = sched.hour.toString().padLeft(2, '0');
+      final m = sched.minute.toString().padLeft(2, '0');
+      return '$h:$m daily  (${sched.durationMinutes} min)';
+    }
+
+    String lastRunLabel() {
+      if (lastRun == null) return 'Never';
+      try {
+        final dt = DateTime.parse(lastRun);
+        return '${dt.month}/${dt.day} '
+            '${dt.hour.toString().padLeft(2, '0')}:'
+            '${dt.minute.toString().padLeft(2, '0')}';
+      } catch (_) {
+        return 'Unknown';
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF00BFA5).withValues(alpha: 0.2),
+                      const Color(0xFF00838F).withValues(alpha: 0.2),
+                    ],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.schedule_outlined,
+                  color: Color(0xFF00BFA5),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bypass Schedule',
+                      style: TextStyle(
+                        color: Color(0xFF2C3E50),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    Text(
+                      'Waste tank → Filter direct',
+                      style: TextStyle(
+                        color: Color(0xFF7F8C8D),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Status badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(
+                    color: pumpOn ? const Color(0xFF00BFA5) : const Color(0xFF9E9E9E),
+                    width: 0.8,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: pumpOn
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF00BFA5).withValues(alpha: 0.3),
+                            blurRadius: 10,
+                          )
+                        ]
+                      : [],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: pumpOn ? const Color(0xFF00BFA5) : const Color(0xFF9E9E9E),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      pumpOn ? 'Running' : 'Idle',
+                      style: TextStyle(
+                        color: pumpOn ? const Color(0xFF00BFA5) : const Color(0xFF9E9E9E),
+                        fontSize: 11,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // Divider
+          Container(
+            margin: const EdgeInsets.only(top: 14, bottom: 14),
+            height: 0.8,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Colors.transparent,
+                  const Color(0xFF00BFA5).withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+          // Schedule info row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildBypassInfoTile('Next Run', nextRunLabel()),
+              _buildBypassInfoTile('Last Run', lastRunLabel()),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Edit schedule + Run Now buttons
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _showBypassScheduleDialog(sched),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: const Color(0xFF00BFA5).withValues(alpha: 0.5),
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Edit Schedule',
+                        style: TextStyle(
+                          color: Color(0xFF00BFA5),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GestureDetector(
+                  onTap: pumpOn
+                      ? null
+                      : () {
+                          ref.read(webSocketServiceProvider).sendBypassCommand(
+                                on: true,
+                                durationSeconds: sched.durationMinutes * 60,
+                              );
+                        },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      gradient: pumpOn
+                          ? null
+                          : const LinearGradient(
+                              colors: [Color(0xFF00BFA5), Color(0xFF00838F)],
+                            ),
+                      color: pumpOn ? const Color(0xFFEEEEEE) : null,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: pumpOn
+                          ? []
+                          : [
+                              BoxShadow(
+                                color: const Color(0xFF00BFA5).withValues(alpha: 0.4),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        pumpOn ? 'Running...' : 'Run Now',
+                        style: TextStyle(
+                          color: pumpOn ? const Color(0xFF9E9E9E) : Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 13,
+                  color: const Color(0xFF7F8C8D).withValues(alpha: 0.7)),
+              const SizedBox(width: 5),
+              const Expanded(
+                child: Text(
+                  'Moves water from waste tank directly to filter, skipping the equalizer.',
+                  style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 10, fontFamily: 'Inter'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBypassInfoTile(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: Color(0xFF9E9E9E), fontSize: 11, fontFamily: 'Inter')),
+        const SizedBox(height: 2),
+        Text(value,
+            style: const TextStyle(
+                color: Color(0xFF2C3E50),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Inter')),
+      ],
+    );
+  }
+
+  void _showBypassScheduleDialog(BypassSchedule current) {
+    int hour     = current.hour;
+    int minute   = current.minute;
+    int duration = current.durationMinutes;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDlgState) {
+            return AlertDialog(
+              title: const Text('Bypass Schedule',
+                  style: TextStyle(fontFamily: 'Poppins', fontSize: 17)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Trigger time',
+                      style: TextStyle(color: Color(0xFF7F8C8D), fontSize: 13)),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: ctx,
+                        initialTime: TimeOfDay(hour: hour, minute: minute),
+                      );
+                      if (picked != null) {
+                        setDlgState(() {
+                          hour   = picked.hour;
+                          minute = picked.minute;
+                        });
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                            color: const Color(0xFF00BFA5).withValues(alpha: 0.5)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${hour.toString().padLeft(2, '0')}:'
+                        '${minute.toString().padLeft(2, '0')}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Inter',
+                          color: Color(0xFF2C3E50),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Duration (minutes)',
+                      style: TextStyle(color: Color(0xFF7F8C8D), fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [15, 30, 60, 90].map((d) {
+                      final sel = duration == d;
+                      return GestureDetector(
+                        onTap: () => setDlgState(() => duration = d),
+                        child: Container(
+                          width: 56,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: sel
+                                ? const Color(0xFF00BFA5).withValues(alpha: 0.1)
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: sel
+                                  ? const Color(0xFF00BFA5)
+                                  : const Color(0xFFDDE3E9),
+                              width: sel ? 1.5 : 1,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${d}m',
+                              style: TextStyle(
+                                color: sel
+                                    ? const Color(0xFF00BFA5)
+                                    : const Color(0xFF7F8C8D),
+                                fontSize: 13,
+                                fontWeight:
+                                    sel ? FontWeight.w600 : FontWeight.w400,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Color(0xFF7F8C8D))),
+                ),
+                TextButton(
+                  onPressed: () {
+                    ref.read(webSocketServiceProvider).sendBypassSchedule(
+                          hour: hour,
+                          minute: minute,
+                          durationMinutes: duration,
+                        );
+                    ref.read(bypassStateProvider.notifier).updateSchedule(
+                          BypassSchedule(
+                              hour: hour,
+                              minute: minute,
+                              durationMinutes: duration),
+                        );
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('Save',
+                      style: TextStyle(color: Color(0xFF00BFA5))),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

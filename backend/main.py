@@ -97,7 +97,7 @@ def _restore_from_redis():
 
         # Only restore non-connectivity fields — don't restore sensor_connected
         # because the sensor isn't connected at startup
-        for key in ("tank_data", "water_quality", "alerts", "devices", "pump", "settings"):
+        for key in ("tank_data", "water_quality", "alerts", "devices", "pump", "settings", "uv", "bypass"):
             if key in cached_state:
                 state[key] = cached_state[key]
         # Never restore sensor_connected / sensor_last_seen from cache
@@ -174,6 +174,16 @@ state = {
         "remaining_seconds": 0,
         "last_command": None,
         "auto_pump_active": None,  # None = not yet determined; True/False = last auto decision
+    },
+    # UV lamp state — on by default (NC wiring: lamp runs unless user turns it off)
+    "uv": {
+        "on": True,
+    },
+    # Bypass pump state and schedule
+    "bypass": {
+        "pump_on": False,
+        "schedule": {"hour": 2, "minute": 0, "duration_seconds": 1800},  # 02:00 AM, 30 min
+        "last_run": None,
     },
     # ESP32/sensor connectivity — true when at least one sensor WS is connected
     "sensor_connected": False,
@@ -455,6 +465,8 @@ class ConnectionManager:
             "alerts": recent_alerts,
             "devices": state["devices"],
             "pump": state["pump"],
+            "uv": state["uv"],
+            "bypass": state["bypass"],
             "sensor_connected": sensor_live,
             "sensor_last_seen": state["sensor_last_seen"],
         })
@@ -512,6 +524,12 @@ manager = ConnectionManager()
 async def handle_sensor_data(data: dict):
     device_id = data.get("device_id", "unknown")
     pump_active = data.get("pump_active", False)
+
+    # Update UV and bypass states reported by firmware
+    if "uv_on" in data:
+        state["uv"]["on"] = bool(data["uv_on"])
+    if "bypass_pump_on" in data:
+        state["bypass"]["pump_on"] = bool(data["bypass_pump_on"])
 
     state["tank_data"].update({
         "level": data.get("level", state["tank_data"]["level"]),
@@ -821,6 +839,153 @@ async def _pump_countdown_loop(duration_seconds: int):
     logger.info("Pump auto-off: timer expired")
 
 
+async def handle_uv_command(data: dict):
+    """Received from Flutter: toggle UV lamp ON/OFF. Stores state and relays to ESP32."""
+    action = data.get("action", "on")
+    uv_on = action == "on"
+    state["uv"]["on"] = uv_on
+
+    forward_msg = {
+        "type": "uv_command",
+        "action": action,
+        "timestamp": datetime.now().isoformat(),
+    }
+    disconnected = set()
+    for conn in manager.sensor_connections:
+        try:
+            await conn.send_json(forward_msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    await manager.broadcast_to_apps({
+        "type": "uv_update",
+        "uv_on": uv_on,
+        "timestamp": datetime.now().isoformat(),
+    })
+    logger.info(f"UV command: {action}")
+
+
+async def handle_bypass_command(data: dict):
+    """Received from Flutter: manual bypass pump trigger."""
+    action = data.get("action", "off")
+    duration_seconds = int(data.get("duration_seconds",
+                                     state["bypass"]["schedule"].get("duration_seconds", 1800)))
+    is_on = action == "on"
+
+    if is_on:
+        state["bypass"]["pump_on"] = True
+        state["bypass"]["last_run"] = datetime.now().isoformat()
+
+    forward_msg = {
+        "type": "bypass_command",
+        "action": action,
+        "duration_seconds": duration_seconds,
+        "source": "manual",
+        "timestamp": datetime.now().isoformat(),
+    }
+    disconnected = set()
+    for conn in manager.sensor_connections:
+        try:
+            await conn.send_json(forward_msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    await manager.broadcast_to_apps({
+        "type": "bypass_update",
+        "bypass_pump_on": is_on,
+        "last_run": state["bypass"]["last_run"],
+        "timestamp": datetime.now().isoformat(),
+    })
+    logger.info(f"Bypass command: {action}, duration={duration_seconds}s")
+
+
+async def handle_bypass_schedule(data: dict):
+    """Received from Flutter: set or update the bypass pump daily schedule."""
+    sched = state["bypass"]["schedule"]
+    if "hour" in data:
+        sched["hour"] = int(data["hour"])
+    if "minute" in data:
+        sched["minute"] = int(data["minute"])
+    if "duration_minutes" in data:
+        sched["duration_seconds"] = int(data["duration_minutes"]) * 60
+    elif "duration_seconds" in data:
+        sched["duration_seconds"] = int(data["duration_seconds"])
+
+    # Forward updated schedule to ESP32 so it can also run offline
+    forward_msg = {
+        "type": "bypass_schedule",
+        "hour": sched["hour"],
+        "minute": sched["minute"],
+        "duration_seconds": sched["duration_seconds"],
+        "timestamp": datetime.now().isoformat(),
+    }
+    disconnected = set()
+    for conn in manager.sensor_connections:
+        try:
+            await conn.send_json(forward_msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    # Echo the new schedule back to all apps
+    await manager.broadcast_to_apps({
+        "type": "bypass_schedule_update",
+        "schedule": sched,
+        "timestamp": datetime.now().isoformat(),
+    })
+    logger.info(f"Bypass schedule updated: {sched['hour']:02d}:{sched['minute']:02d}, "
+                f"dur={sched['duration_seconds']}s")
+
+
+async def _bypass_schedule_loop():
+    """Background task: fire bypass_command to ESP32 at the configured daily time."""
+    last_trigger_date = None
+    while True:
+        await asyncio.sleep(30)  # check every 30 s
+        try:
+            sched = state["bypass"]["schedule"]
+            hour   = sched.get("hour", -1)
+            minute = sched.get("minute", 0)
+            dur_sec = sched.get("duration_seconds", 1800)
+            if hour < 0:
+                continue
+            now = datetime.now()
+            today = now.date()
+            if now.hour == hour and now.minute == minute and last_trigger_date != today:
+                last_trigger_date = today
+                state["bypass"]["pump_on"] = True
+                state["bypass"]["last_run"] = now.isoformat()
+                bypass_msg = {
+                    "type": "bypass_command",
+                    "action": "on",
+                    "duration_seconds": dur_sec,
+                    "source": "schedule",
+                    "timestamp": now.isoformat(),
+                }
+                disconnected = set()
+                for conn in list(manager.sensor_connections):
+                    try:
+                        await conn.send_json(bypass_msg)
+                    except Exception:
+                        disconnected.add(conn)
+                for c in disconnected:
+                    manager.sensor_connections.discard(c)
+                await manager.broadcast_to_apps({
+                    "type": "bypass_update",
+                    "bypass_pump_on": True,
+                    "last_run": now.isoformat(),
+                    "timestamp": now.isoformat(),
+                })
+                logger.info(f"[Bypass] Scheduled trigger at {hour:02d}:{minute:02d}, dur={dur_sec}s")
+        except Exception as e:
+            logger.warning(f"Bypass schedule loop error: {e}")
+
+
 async def handle_pump_command(data: dict):
     """
     Received from the Flutter app over /ws/app.
@@ -901,6 +1066,7 @@ async def handle_pump_command(data: dict):
 async def _on_startup():
     """Start background tasks when the ASGI server starts."""
     asyncio.create_task(_redis_snapshot_loop())
+    asyncio.create_task(_bypass_schedule_loop())
 
 
 @app.get("/")
@@ -1067,11 +1233,19 @@ async def websocket_app(websocket: WebSocket):
                     "alerts": state["alerts"],
                     "devices": state["devices"],
                     "pump": state["pump"],
+                    "uv": state["uv"],
+                    "bypass": state["bypass"],
                 })
             elif msg_type == "get_history":
                 await handle_get_history(data, websocket)
             elif msg_type == "pump_command":
                 await handle_pump_command(data)
+            elif msg_type == "uv_command":
+                await handle_uv_command(data)
+            elif msg_type == "bypass_command":
+                await handle_bypass_command(data)
+            elif msg_type == "bypass_schedule":
+                await handle_bypass_schedule(data)
             elif msg_type == "heartbeat":
                 await websocket.send_json({
                     "type": "heartbeat_ack",

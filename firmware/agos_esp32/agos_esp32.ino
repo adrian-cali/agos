@@ -32,6 +32,7 @@
  */
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <esp_mac.h>          // esp_read_mac() for ESP32 core 3.x
 #include <Preferences.h>
 // BLE — use the built-in library from ESP32 Arduino core (do NOT install
@@ -44,6 +45,8 @@
 #include <esp_bt.h>          // esp_bt_controller_mem_release() for deep BLE heap reclaim
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h>
+#include <LiquidCrystal_I2C.h>
+#include <time.h>
 
 // ════════════════════════════════════════════════════════════════════════════
 // Configuration — edit these to match your install
@@ -97,9 +100,14 @@ const unsigned long RECONN_DELAY_MS  = 5000;  // reconnect delay on WS drop
 #define PIN_TRIG         5   // JSN-SR04T V3.0 TRIG
 #define PIN_ECHO        18   // JSN-SR04T V3.0 ECHO (via 1kΩ/2kΩ voltage divider)
 #define PIN_PUMP_RELAY    26   // Relay module IN pin
+#define PIN_UV_RELAY      27   // UV lamp relay IN pin (NC terminal → UV ON by default)
+#define PIN_BYPASS_RELAY  25   // Bypass pump relay IN pin (NO terminal → bypass OFF by default)
+// LCD I2C uses hardware I2C: SDA = GPIO21, SCL = GPIO22 (handled by LiquidCrystal_I2C library)
 #define RELAY_ACTIVE_HIGH true  // true = pump wired to NC contact (HIGH de-energises relay,
                                // NC closes → pump ON). At boot GPIO26 floats LOW → relay
                                // energises → NC opens → pump stays OFF → no brownout crash.
+const bool RELAY_UV_ACTIVE_HIGH     = true;   // NC wiring: HIGH = de-energised = UV ON at boot
+const bool RELAY_BYPASS_ACTIVE_HIGH = false;  // NO wiring: LOW  = energised     = bypass ON
 
 // BLE UUIDs — must match ble_provisioning_service.dart
 #define BLE_SERVICE_UUID       "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -137,11 +145,31 @@ bool          g_wsConnected = false;
 const float PH_EMA_ALPHA = 0.3f;
 float       g_phVoltageEma = -1.0f;  // -1 = uninitialized
 
+// UV relay state — persisted to NVS; default ON (NC wiring = UV ON when relay de-energised)
+bool g_uvActive = true;
+
+// Bypass pump state
+bool          g_bypassActive  = false;  // true when bypass pump is currently running
+int           g_bypassHour    = 2;      // scheduled hour (0-23), -1 = disabled
+int           g_bypassMin     = 0;      // scheduled minute (0-59)
+int           g_bypassDurSec  = 1800;   // run duration in seconds (default 30 min)
+unsigned long g_bypassEndMs   = 0;      // millis() at which to stop bypass (0 = not running)
+int           g_lastBypassDay = -1;     // tm_mday when bypass last started (prevents re-trigger)
+
+// LCD ticker string — rebuilt on every sensor send
+char          g_tickerBuf[128] = "";
+int           g_tickerPos      = 0;     // current scroll offset (chars)
+unsigned long g_lcdScrollMs    = 0;     // last scroll step timestamp
+
 // ─────────────────────────── BLE state ──────────────────────────────────────
 BLEServer*         g_bleServer = nullptr;
 BLECharacteristic* g_bleChar   = nullptr;
 bool               g_bleClientConnected = false;
 bool               g_provisioningDone   = false;  // true after WiFi creds received
+
+// ─────────────────────────── LCD ─────────────────────────────────────────────
+// 16x2 I2C LCD at address 0x27 (try 0x3F if blank after power-on)
+LiquidCrystal_I2C g_lcd(0x27, 16, 2);
 
 // ════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -267,6 +295,98 @@ void setPump(bool on) {
   digitalWrite(PIN_PUMP_RELAY, level ? HIGH : LOW);
 }
 
+void setUvRelay(bool on) {
+  g_uvActive = on;
+  // RELAY_UV_ACTIVE_HIGH = true: HIGH = de-energised relay = NC closed = UV ON
+  bool level = RELAY_UV_ACTIVE_HIGH ? on : !on;
+  digitalWrite(PIN_UV_RELAY, level ? HIGH : LOW);
+  // Persist to NVS
+  prefs.begin("agos", false);
+  prefs.putBool("uv_on", on);
+  prefs.end();
+  Serial.printf("[UV] %s\n", on ? "ON" : "OFF");
+}
+
+void setBypassRelay(bool on) {
+  g_bypassActive = on;
+  // RELAY_BYPASS_ACTIVE_HIGH = false: LOW = energised relay = NO closed = bypass ON
+  bool level = RELAY_BYPASS_ACTIVE_HIGH ? on : !on;
+  digitalWrite(PIN_BYPASS_RELAY, level ? HIGH : LOW);
+  Serial.printf("[Bypass pump] %s\n", on ? "ON" : "OFF");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LCD functions
+// ════════════════════════════════════════════════════════════════════════════
+
+// Rebuild the Row-2 scrolling ticker with latest sensor values.
+// Called from sendSensorData() so the values are always fresh.
+void rebuildTicker(float level, float ph, float turbidity, float tds) {
+  snprintf(g_tickerBuf, sizeof(g_tickerBuf),
+           "Lv:%.0f%%  pH:%.2f  Turb:%.1fNTU  TDS:%.0fppm  ",
+           level, ph, turbidity, tds);
+}
+
+// Advance Row-2 scroll by one character — call from loop() every ~350 ms.
+void tickLcdScroll() {
+  unsigned long now = millis();
+  if (now - g_lcdScrollMs < 350) return;
+  g_lcdScrollMs = now;
+  int len = strlen(g_tickerBuf);
+  if (len == 0) return;
+  g_lcd.setCursor(0, 1);
+  for (int col = 0; col < 16; col++) {
+    g_lcd.print((char)g_tickerBuf[(g_tickerPos + col) % len]);
+  }
+  g_tickerPos = (g_tickerPos + 1) % len;
+}
+
+// Update Row-1 status string — called from sendSensorData().
+void updateLcdStatus() {
+  g_lcd.setCursor(0, 0);
+  if (!g_wsConnected) {
+    g_lcd.print("OFFLINE...      ");
+  } else if (g_bypassActive) {
+    g_lcd.print("BYPASSING...    ");
+  } else if (g_pumpActive) {
+    g_lcd.print("FILTERING...    ");
+  } else if (!g_uvActive) {
+    g_lcd.print("UV LAMP OFF     ");
+  } else {
+    g_lcd.print("OPERATIONAL     ");
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Bypass schedule
+// ════════════════════════════════════════════════════════════════════════════
+
+// Check whether it's time to start the daily bypass. Call from loop().
+// Also stops the bypass when its duration elapses.
+void checkBypassSchedule() {
+  // Stop running bypass if duration has elapsed
+  if (g_bypassActive && g_bypassEndMs > 0 && millis() >= g_bypassEndMs) {
+    setBypassRelay(false);
+    g_bypassEndMs = 0;
+    Serial.println("[Bypass] Duration elapsed → OFF");
+  }
+
+  // Only schedule-trigger when NTP is available and we're online
+  if (g_bypassHour < 0 || g_bypassHour > 23) return;
+
+  struct tm t;
+  if (!getLocalTime(&t)) return;  // NTP not yet synced
+
+  if (t.tm_hour == g_bypassHour && t.tm_min == g_bypassMin
+      && t.tm_mday != g_lastBypassDay && !g_bypassActive) {
+    g_lastBypassDay = t.tm_mday;
+    g_bypassEndMs   = millis() + (unsigned long)g_bypassDurSec * 1000UL;
+    setBypassRelay(true);
+    Serial.printf("[Bypass] Scheduled trigger %02d:%02d, dur=%ds\n",
+                  g_bypassHour, g_bypassMin, g_bypassDurSec);
+  }
+}
+
 // Call every second (from loop) to count down manual mode
 void tickPumpCountdown() {
   static unsigned long lastTickMs = 0;
@@ -318,6 +438,34 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
         g_pumpManual    = turnOn;
         g_pumpRemaining = turnOn ? durationSeconds : 0;
         Serial.printf("[Pump] Command: %s, duration=%ds\n", action, durationSeconds);
+      } else if (strcmp(msgType, "uv_command") == 0) {
+        const char* action = doc["action"] | "on";
+        bool uvOn = strcmp(action, "on") == 0;
+        setUvRelay(uvOn);
+      } else if (strcmp(msgType, "bypass_command") == 0) {
+        const char* action  = doc["action"] | "off";
+        int         durSec  = doc["duration_seconds"] | g_bypassDurSec;
+        bool        turnOn  = strcmp(action, "on") == 0;
+        if (turnOn) {
+          g_bypassEndMs = millis() + (unsigned long)durSec * 1000UL;
+          setBypassRelay(true);
+        } else {
+          setBypassRelay(false);
+          g_bypassEndMs = 0;
+        }
+        Serial.printf("[Bypass] Command: %s, duration=%ds\n", action, durSec);
+      } else if (strcmp(msgType, "bypass_schedule") == 0) {
+        g_bypassHour   = doc["hour"]             | g_bypassHour;
+        g_bypassMin    = doc["minute"]            | g_bypassMin;
+        g_bypassDurSec = doc["duration_seconds"]  | g_bypassDurSec;
+        // Persist to NVS
+        prefs.begin("agos", false);
+        prefs.putInt("bypass_hour", g_bypassHour);
+        prefs.putInt("bypass_min",  g_bypassMin);
+        prefs.putInt("bypass_dur",  g_bypassDurSec);
+        prefs.end();
+        Serial.printf("[Bypass] Schedule set: %02d:%02d, dur=%ds\n",
+                      g_bypassHour, g_bypassMin, g_bypassDurSec);
       }
       break;
     }
@@ -454,6 +602,9 @@ bool connectWifi(const char* ssid, const char* password, int timeoutSec = 20) {
   Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[WiFi] Connected — IP: %s\n", WiFi.localIP().toString().c_str());
+    // Sync NTP time for bypass pump schedule (UTC+8 = Philippine Standard Time)
+    configTime(8 * 3600, 0, "pool.ntp.org", "time.cloudflare.com");
+    Serial.println("[NTP] Time sync started (UTC+8)");
     return true;
   }
   Serial.println("[WiFi] Failed to connect");
@@ -539,11 +690,17 @@ void sendSensorData() {
   doc["ph"]         = round(ph         * 100.0f) / 100.0f;
   doc["tds"]        = round(tds        * 10.0f)  / 10.0f;
   doc["temperature"]= round(temperature * 10.0f) / 10.0f;
-  doc["pump_active"]= g_pumpActive;
+  doc["pump_active"]     = g_pumpActive;
+  doc["uv_on"]           = g_uvActive;
+  doc["bypass_pump_on"]  = g_bypassActive;
 
   String payload;
   serializeJson(doc, payload);
   ws.sendTXT(payload);
+
+  // Update LCD with fresh sensor values
+  rebuildTicker(level, ph, turbidity, tds);
+  updateLcdStatus();
 
   // Debug: raw ADC voltages — helpful for wiring/calibration checks.
   // Expected when probes are in water: Turb ≈ 2.0-3.0V, pH ≈ 2.0-3.0V, TDS ≈ 0.3-1.5V
@@ -568,7 +725,15 @@ void setup() {
   //    GPIO26 is still floating (input mode), drawing ~70 mA and triggering
   //    a brownout that corrupts the flash read on subsequent boots.
   pinMode(PIN_PUMP_RELAY, OUTPUT);
-  digitalWrite(PIN_PUMP_RELAY, RELAY_ACTIVE_HIGH ? LOW : HIGH);  // relay off
+  digitalWrite(PIN_PUMP_RELAY, RELAY_ACTIVE_HIGH ? LOW : HIGH);  // pump relay off
+
+  // UV lamp relay — NC wiring. HIGH = de-energised = NC closed = UV ON at boot.
+  pinMode(PIN_UV_RELAY, OUTPUT);
+  digitalWrite(PIN_UV_RELAY, RELAY_UV_ACTIVE_HIGH ? HIGH : LOW);  // UV ON at boot
+
+  // Bypass pump relay — NO wiring. HIGH = de-energised = NO open = bypass OFF at boot.
+  pinMode(PIN_BYPASS_RELAY, OUTPUT);
+  digitalWrite(PIN_BYPASS_RELAY, RELAY_BYPASS_ACTIVE_HIGH ? LOW : HIGH);  // bypass OFF at boot
 
   Serial.begin(115200);
   delay(300);
@@ -578,12 +743,30 @@ void setup() {
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
 
+  // LCD init — I2C on GPIO21 (SDA) / GPIO22 (SCL)
+  Wire.begin(21, 22);
+  g_lcd.init();
+  g_lcd.backlight();
+  g_lcd.setCursor(0, 0);
+  g_lcd.print("AGOS Starting...");
+  g_lcd.setCursor(0, 1);
+  g_lcd.print("Please wait...  ");
+
   // Load stored credentials from NVS flash
   prefs.begin("agos", true);
   prefs.getString("ssid",      g_ssid,     sizeof(g_ssid));
   prefs.getString("password",  g_password, sizeof(g_password));
   // Note: device_id is hardcoded above; do not overwrite from NVS.
+  // Load UV state (default ON if not yet stored)
+  g_uvActive     = prefs.getBool("uv_on",    true);
+  // Load bypass schedule
+  g_bypassHour   = prefs.getInt("bypass_hour", 2);
+  g_bypassMin    = prefs.getInt("bypass_min",  0);
+  g_bypassDurSec = prefs.getInt("bypass_dur",  1800);
   prefs.end();
+
+  // Apply loaded UV state to relay (overrides the boot-safe HIGH set above)
+  setUvRelay(g_uvActive);  // also calls prefs.begin/end — safe because it's separate transaction
 
   // (device_id is hardcoded — no dynamic generation needed)
 
@@ -647,6 +830,12 @@ void loop() {
 
   // ── Pump countdown ───────────────────────────────────────────────────────
   tickPumpCountdown();
+
+  // ── Bypass schedule check + duration expiry ──────────────────────────────
+  checkBypassSchedule();
+
+  // ── LCD Row-2 scrolling ticker ───────────────────────────────────────────
+  tickLcdScroll();
 
   // ── Send sensor data every SEND_INTERVAL_MS ─────────────────────────────
   unsigned long now = millis();
