@@ -1209,18 +1209,43 @@ class BypassSchedule {
 
 class BypassState {
   final bool isPumpOn;
+  final bool isPaused;
+  final int? pausedRemainingSeconds;
+  final DateTime? runStartedAt;
+  final int runDurationSeconds;
   final BypassSchedule schedule;
-  final String? lastRun;  // ISO-8601 or null
+  final String? lastRun;
 
   const BypassState({
     this.isPumpOn = false,
+    this.isPaused = false,
+    this.pausedRemainingSeconds,
+    this.runStartedAt,
+    this.runDurationSeconds = 0,
     this.schedule = const BypassSchedule(),
     this.lastRun,
   });
 
-  BypassState copyWith({bool? isPumpOn, BypassSchedule? schedule, String? lastRun}) {
+  int get remainingSeconds {
+    if (isPaused && pausedRemainingSeconds != null) return pausedRemainingSeconds!;
+    if (isPumpOn && runStartedAt != null && runDurationSeconds > 0) {
+      final elapsed = DateTime.now().difference(runStartedAt!).inSeconds;
+      return (runDurationSeconds - elapsed).clamp(0, runDurationSeconds);
+    }
+    return 0;
+  }
+
+  BypassState copyWith({
+    bool? isPumpOn,
+    BypassSchedule? schedule,
+    String? lastRun,
+  }) {
     return BypassState(
       isPumpOn: isPumpOn ?? this.isPumpOn,
+      isPaused: isPaused,
+      pausedRemainingSeconds: pausedRemainingSeconds,
+      runStartedAt: runStartedAt,
+      runDurationSeconds: runDurationSeconds,
       schedule: schedule ?? this.schedule,
       lastRun: lastRun ?? this.lastRun,
     );
@@ -1235,6 +1260,51 @@ class BypassStateNotifier extends StateNotifier<BypassState> {
   void updateSchedule(BypassSchedule s) => state = state.copyWith(schedule: s);
 
   void update(BypassState newState) => state = newState;
+
+  void startRun(int durationSeconds) {
+    state = BypassState(
+      isPumpOn: true,
+      isPaused: false,
+      runStartedAt: DateTime.now(),
+      runDurationSeconds: durationSeconds,
+      schedule: state.schedule,
+      lastRun: state.lastRun,
+    );
+  }
+
+  void pauseRun() {
+    final remaining = state.remainingSeconds;
+    state = BypassState(
+      isPumpOn: false,
+      isPaused: true,
+      pausedRemainingSeconds: remaining > 0 ? remaining : state.runDurationSeconds,
+      runStartedAt: state.runStartedAt,
+      runDurationSeconds: state.runDurationSeconds,
+      schedule: state.schedule,
+      lastRun: state.lastRun,
+    );
+  }
+
+  void resumeRun() {
+    final resumeDuration = state.pausedRemainingSeconds ?? state.runDurationSeconds;
+    state = BypassState(
+      isPumpOn: true,
+      isPaused: false,
+      runStartedAt: DateTime.now(),
+      runDurationSeconds: resumeDuration,
+      schedule: state.schedule,
+      lastRun: state.lastRun,
+    );
+  }
+
+  void stopRun() {
+    state = BypassState(
+      isPumpOn: false,
+      isPaused: false,
+      schedule: state.schedule,
+      lastRun: state.lastRun,
+    );
+  }
 }
 
 final bypassStateProvider =
@@ -1246,7 +1316,10 @@ final bypassStateProvider =
     if (type == 'bypass_update') {
       final bool on = data['bypass_pump_on'] == true;
       final String? lastRun = data['last_run'] as String?;
-      notifier.update(notifier.state.copyWith(isPumpOn: on, lastRun: lastRun));
+      // Don't overwrite paused state with a server-echo of pump_on=false
+      if (!notifier.state.isPaused || on) {
+        notifier.update(notifier.state.copyWith(isPumpOn: on, lastRun: lastRun));
+      }
     } else if (type == 'bypass_schedule_update') {
       final sched = data['schedule'] as Map<String, dynamic>?;
       if (sched != null) {

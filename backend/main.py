@@ -812,6 +812,8 @@ async def _pump_countdown_loop(duration_seconds: int):
 
     # Timer expired → auto-off
     state["pump"].update({"pump_on": False, "manual": False, "remaining_seconds": 0})
+    # Reset auto-pump decision so next sensor read re-evaluates cleanly.
+    state["pump"]["auto_pump_active"] = None
     # Forward off command to sensors
     off_msg = {
         "type": "pump_command",
@@ -1010,6 +1012,10 @@ async def handle_pump_command(data: dict):
         "remaining_seconds": duration_seconds if is_on else 0,
         "last_command": datetime.now().isoformat(),
     })
+    # When manual mode ends, reset the auto-pump decision so the next sensor
+    # reading re-evaluates and re-triggers if water quality still requires it.
+    if not is_on:
+        state["pump"]["auto_pump_active"] = None
 
     # Forward to every connected sensor (ESP32)
     forward_msg = {

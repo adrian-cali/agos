@@ -1467,6 +1467,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final bypassState = ref.watch(bypassStateProvider);
     final sched = bypassState.schedule;
     final bool pumpOn = bypassState.isPumpOn;
+    final bool isPaused = bypassState.isPaused;
     final String? lastRun = bypassState.lastRun;
 
     String nextRunLabel() {
@@ -1622,81 +1623,247 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ],
           ),
           const SizedBox(height: 14),
-          // Edit schedule + Run Now buttons
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _showBypassScheduleDialog(sched),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: const Color(0xFF00BFA5).withValues(alpha: 0.5),
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Edit Schedule',
-                        style: TextStyle(
-                          color: Color(0xFF00BFA5),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          fontFamily: 'Poppins',
+          // ── Action buttons (changes based on pump state) ──────────────────
+          if (!pumpOn && !isPaused) ...
+            // Idle: Edit Schedule + Run Now
+            [
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _showBypassScheduleDialog(sched),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: const Color(0xFF00BFA5).withValues(alpha: 0.5)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'Edit Schedule',
+                            style: TextStyle(
+                              color: Color(0xFF00BFA5),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: GestureDetector(
-                  onTap: pumpOn
-                      ? null
-                      : () {
-                          ref.read(webSocketServiceProvider).sendBypassCommand(
-                                on: true,
-                                durationSeconds: sched.durationMinutes * 60,
-                              );
-                        },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    decoration: BoxDecoration(
-                      gradient: pumpOn
-                          ? null
-                          : const LinearGradient(
-                              colors: [Color(0xFF00BFA5), Color(0xFF00838F)],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        final durSec = sched.durationMinutes * 60;
+                        ref.read(webSocketServiceProvider).sendBypassCommand(
+                            on: true, durationSeconds: durSec);
+                        ref.read(bypassStateProvider.notifier).startRun(durSec);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFF00BFA5), Color(0xFF00838F)]),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color:
+                                  const Color(0xFF00BFA5).withValues(alpha: 0.4),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
-                      color: pumpOn ? const Color(0xFFEEEEEE) : null,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: pumpOn
-                          ? []
-                          : [
-                              BoxShadow(
-                                color: const Color(0xFF00BFA5).withValues(alpha: 0.4),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'Run Now',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ]
+          else if (pumpOn && !isPaused) ...
+            // Running: Pause + Stop
+            [
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        ref.read(webSocketServiceProvider)
+                            .sendBypassCommand(on: false);
+                        ref.read(bypassStateProvider.notifier).pauseRun();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: const Color(0xFFFFB300).withValues(alpha: 0.7)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.pause_rounded,
+                                  size: 15, color: Color(0xFFFFB300)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Pause',
+                                style: TextStyle(
+                                  color: Color(0xFFFFB300),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'Poppins',
+                                ),
                               ),
                             ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        pumpOn ? 'Running...' : 'Run Now',
-                        style: TextStyle(
-                          color: pumpOn ? const Color(0xFF9E9E9E) : Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Poppins',
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        ref.read(webSocketServiceProvider)
+                            .sendBypassCommand(on: false);
+                        ref.read(bypassStateProvider.notifier).stopRun();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: const Color(0xFFE53935).withValues(alpha: 0.7)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.stop_rounded,
+                                  size: 15, color: Color(0xFFE53935)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Stop',
+                                style: TextStyle(
+                                  color: Color(0xFFE53935),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ]
+          else ...
+            // Paused: Resume + Stop
+            [
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        final remaining = bypassState.pausedRemainingSeconds ??
+                            sched.durationMinutes * 60;
+                        ref.read(webSocketServiceProvider).sendBypassCommand(
+                            on: true, durationSeconds: remaining);
+                        ref.read(bypassStateProvider.notifier).resumeRun();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFF00BFA5), Color(0xFF00838F)]),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color:
+                                  const Color(0xFF00BFA5).withValues(alpha: 0.4),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.play_arrow_rounded,
+                                  size: 16, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                'Resume',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        ref.read(bypassStateProvider.notifier).stopRun();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: const Color(0xFFE53935).withValues(alpha: 0.7)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.stop_rounded,
+                                  size: 15, color: Color(0xFFE53935)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Stop',
+                                style: TextStyle(
+                                  color: Color(0xFFE53935),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
-          ),
           const SizedBox(height: 10),
           Row(
             children: [
