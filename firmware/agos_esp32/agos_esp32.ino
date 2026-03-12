@@ -107,7 +107,7 @@ const unsigned long RECONN_DELAY_MS  = 5000;  // reconnect delay on WS drop
                                // NC closes → pump ON). At boot GPIO26 floats LOW → relay
                                // energises → NC opens → pump stays OFF → no brownout crash.
 const bool RELAY_UV_ACTIVE_HIGH     = true;   // NC wiring: HIGH = de-energised = UV ON at boot
-const bool RELAY_BYPASS_ACTIVE_HIGH = true;   // NO wiring: HIGH = energised     = bypass ON
+const bool RELAY_BYPASS_ACTIVE_HIGH = false;  // NO wiring: LOW  = energised     = bypass ON
 
 // BLE UUIDs — must match ble_provisioning_service.dart
 #define BLE_SERVICE_UUID       "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -309,7 +309,7 @@ void setUvRelay(bool on) {
 
 void setBypassRelay(bool on) {
   g_bypassActive = on;
-  // RELAY_BYPASS_ACTIVE_HIGH = true: HIGH = energised relay = NO closed = bypass ON
+  // RELAY_BYPASS_ACTIVE_HIGH = false: LOW = energised relay = NO closed = bypass ON
   bool level = RELAY_BYPASS_ACTIVE_HIGH ? on : !on;
   digitalWrite(PIN_BYPASS_RELAY, level ? HIGH : LOW);
   Serial.printf("[Bypass pump] %s\n", on ? "ON" : "OFF");
