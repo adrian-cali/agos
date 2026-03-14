@@ -61,7 +61,7 @@ def _init_redis():
     if not redis_url:
         return None
     try:
-        import redis as _redis
+        import redis as _redis  # type: ignore[import-not-found]
         client = _redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=3)
         client.ping()  # verify connection
         logger.info("Redis connected.")

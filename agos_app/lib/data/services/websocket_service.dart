@@ -1255,6 +1255,9 @@ class BypassState {
 class BypassStateNotifier extends StateNotifier<BypassState> {
   BypassStateNotifier() : super(const BypassState());
 
+  /// Read-only state accessor for use outside the notifier class.
+  BypassState get currentState => state;
+
   void setPumpOn(bool on) => state = state.copyWith(isPumpOn: on);
 
   void updateSchedule(BypassSchedule s) => state = state.copyWith(schedule: s);
@@ -1317,8 +1320,9 @@ final bypassStateProvider =
       final bool on = data['bypass_pump_on'] == true;
       final String? lastRun = data['last_run'] as String?;
       // Don't overwrite paused state with a server-echo of pump_on=false
-      if (!notifier.state.isPaused || on) {
-        notifier.update(notifier.state.copyWith(isPumpOn: on, lastRun: lastRun));
+      if (!notifier.currentState.isPaused || on) {
+        notifier.update(
+            notifier.currentState.copyWith(isPumpOn: on, lastRun: lastRun));
       }
     } else if (type == 'bypass_schedule_update') {
       final sched = data['schedule'] as Map<String, dynamic>?;

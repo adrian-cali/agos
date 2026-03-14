@@ -18,9 +18,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
   late TabController _tabController;
   final List<String> _tabs = ['All', 'Alerts', 'Updates', 'Maintenance'];
 
-  /// IDs dismissed locally this session (swipe-delete or Mark All Read)
-  final Set<String> _dismissedIds = {};
-
   @override
   void initState() {
     super.initState();
@@ -45,6 +42,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
         ? const AsyncValue<List<AlertItem>>.data([])
         : ref.watch(firestoreAlertsProvider(deviceId));
     final fsAlerts = fsAlertsAsync.valueOrNull ?? [];
+    final dismissedState = ref.watch(dismissedAlertsProvider);
+    final dismissedIds = dismissedState.ids;
 
     // Merge: deduplicate by id, WS alerts take precedence (they're live)
     // Exclude threshold_exceeded WS alerts — handled by Firestore firestoreAlertsProvider.
@@ -58,9 +57,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
     ];
     // Sort newest-first
     combined.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    // Remove locally dismissed
+    // Remove user-dismissed notifications (persisted in SharedPreferences)
     final visible = combined
-        .where((a) => !_dismissedIds.contains(a.id))
+      .where((a) => !dismissedIds.contains(a.id))
         .toList();
 
     final isLoading = fsAlertsAsync.isLoading && fsAlerts.isEmpty;
@@ -107,9 +106,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                         ),
                         onSelected: (value) {
                           if (value == 'mark_read') {
-                            setState(() {
-                              _dismissedIds.addAll(combined.map((a) => a.id));
-                            });
+                            ref
+                                .read(dismissedAlertsProvider.notifier)
+                                .dismissAll(combined.map((a) => a.id));
                           } else if (value == 'clear_all') {
                             showDialog(
                               context: context,
@@ -138,13 +137,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                                       Navigator.pop(ctx);
                                       final wsService =
                                           ref.read(webSocketServiceProvider);
-                                      for (final a in combined) {
+                                      for (final a in wsAlerts
+                                          .where((a) =>
+                                              a.type != 'threshold_exceeded')) {
                                         wsService.deleteAlert(a.id);
                                       }
-                                      setState(() {
-                                        _dismissedIds.addAll(
-                                            combined.map((a) => a.id));
-                                      });
+                                      ref
+                                          .read(dismissedAlertsProvider
+                                              .notifier)
+                                          .dismissAll(
+                                              combined.map((a) => a.id));
                                     },
                                     child: const Text('Clear All',
                                         style: TextStyle(
@@ -337,11 +339,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
               if (direction == DismissDirection.endToStart) {
                 // Delete — remove from WS notifier and mark dismissed locally
                 ref.read(webSocketServiceProvider).deleteAlert(alert.id);
-                setState(() => _dismissedIds.add(alert.id));
+                ref.read(dismissedAlertsProvider.notifier).dismiss(alert.id);
                 return true;
               }
               // Swipe right → mark as read (just remove visually)
-              setState(() => _dismissedIds.add(alert.id));
+              ref.read(dismissedAlertsProvider.notifier).dismiss(alert.id);
               return true;
             },
             child: _buildNotificationCard(alert),

@@ -122,6 +122,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Widget _buildGoogleGlyph() {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2EBF3)),
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        'G',
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF4285F4),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -391,11 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                             strokeWidth: 2,
                                             color: Color(0xFF4285F4)),
                                       )
-                                    : Image.network(
-                                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/240px-Google_%22G%22_logo.svg.png',
-                                        width: 22,
-                                        height: 22,
-                                      ),
+                                    : _buildGoogleGlyph(),
                                 label: Text(
                                   'Continue with Google',
                                   style: GoogleFonts.inter(

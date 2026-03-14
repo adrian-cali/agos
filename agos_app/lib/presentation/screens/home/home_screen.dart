@@ -1378,14 +1378,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFFFFD700).withValues(alpha: 0.25),
-                      const Color(0xFFFF8C00).withValues(alpha: 0.25),
+                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
+                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
                     ],
                   ),
                 ),
                 child: const Icon(
                   Icons.wb_sunny_outlined,
-                  color: Color(0xFFFFB300),
+                  color: Color(0xFF00D3F2),
                   size: 20,
                 ),
               ),
@@ -1420,7 +1420,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 scale: 0.9,
                 child: Switch(
                   value: uvOn,
-                  activeColor: const Color(0xFFFFB300),
+                  activeThumbColor: const Color(0xFF00B8DB),
+                  activeTrackColor: const Color(0xFF00B8DB).withValues(alpha: 0.35),
+                  inactiveThumbColor: const Color(0xFF7F8C8D),
+                  inactiveTrackColor: const Color(0xFFDDE3E9),
                   onChanged: (val) {
                     ref.read(webSocketServiceProvider).sendUvCommand(on: val);
                     ref.read(uvStateProvider.notifier).setOn(val);
@@ -1437,7 +1440,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: uvOn ? const Color(0xFFFFB300) : const Color(0xFF9E9E9E),
+                  color: uvOn ? const Color(0xFF00B8DB) : const Color(0xFF7F8C8D),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -1517,14 +1520,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFF00BFA5).withValues(alpha: 0.2),
-                      const Color(0xFF00838F).withValues(alpha: 0.2),
+                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
+                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
                     ],
                   ),
                 ),
                 child: const Icon(
                   Icons.schedule_outlined,
-                  color: Color(0xFF00BFA5),
+                  color: Color(0xFF00D3F2),
                   size: 20,
                 ),
               ),
@@ -1560,14 +1563,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
-                    color: pumpOn ? const Color(0xFF00BFA5) : const Color(0xFF9E9E9E),
+                    color: pumpOn ? const Color(0xFF00B8DB) : const Color(0xFF7F8C8D),
                     width: 0.8,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: pumpOn
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF00BFA5).withValues(alpha: 0.3),
+                            color: const Color(0xFF00B8DB).withValues(alpha: 0.3),
                             blurRadius: 10,
                           )
                         ]
@@ -1580,7 +1583,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: pumpOn ? const Color(0xFF00BFA5) : const Color(0xFF9E9E9E),
+                        color: pumpOn ? const Color(0xFF00B8DB) : const Color(0xFF7F8C8D),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -1588,7 +1591,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     Text(
                       pumpOn ? 'Running' : 'Idle',
                       style: TextStyle(
-                        color: pumpOn ? const Color(0xFF00BFA5) : const Color(0xFF9E9E9E),
+                        color: pumpOn ? const Color(0xFF00B8DB) : const Color(0xFF7F8C8D),
                         fontSize: 11,
                         fontFamily: 'Inter',
                       ),
@@ -1608,7 +1611,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 end: Alignment.centerRight,
                 colors: [
                   Colors.transparent,
-                  const Color(0xFF00BFA5).withValues(alpha: 0.3),
+                  const Color(0xFF00B8DB).withValues(alpha: 0.3),
                   Colors.transparent,
                 ],
               ),
@@ -1636,14 +1639,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: const Color(0xFF00BFA5).withValues(alpha: 0.5)),
+                              color: const Color(0xFF00B8DB).withValues(alpha: 0.5)),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Center(
                           child: Text(
                             'Edit Schedule',
                             style: TextStyle(
-                              color: Color(0xFF00BFA5),
+                              color: Color(0xFF00B8DB),
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               fontFamily: 'Poppins',
@@ -1666,12 +1669,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                              colors: [Color(0xFF00BFA5), Color(0xFF00838F)]),
+                              colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)]),
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
                               color:
-                                  const Color(0xFF00BFA5).withValues(alpha: 0.4),
+                                  const Color(0xFF00B8DB).withValues(alpha: 0.4),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -1710,7 +1713,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: const Color(0xFFFFB300).withValues(alpha: 0.7)),
+                              color: const Color(0xFF00B8DB).withValues(alpha: 0.7)),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Center(
@@ -1718,12 +1721,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.pause_rounded,
-                                  size: 15, color: Color(0xFFFFB300)),
+                                  size: 15, color: Color(0xFF00B8DB)),
                               SizedBox(width: 4),
                               Text(
                                 'Pause',
                                 style: TextStyle(
-                                  color: Color(0xFFFFB300),
+                                  color: Color(0xFF00B8DB),
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                   fontFamily: 'Poppins',
@@ -1793,12 +1796,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                              colors: [Color(0xFF00BFA5), Color(0xFF00838F)]),
+                              colors: [Color(0xFF00B8DB), Color(0xFF2B7FFF)]),
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
                               color:
-                                  const Color(0xFF00BFA5).withValues(alpha: 0.4),
+                                  const Color(0xFF00B8DB).withValues(alpha: 0.4),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -1937,7 +1940,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
                         border: Border.all(
-                            color: const Color(0xFF00BFA5).withValues(alpha: 0.5)),
+                            color: const Color(0xFF00B8DB).withValues(alpha: 0.5)),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -1968,11 +1971,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           decoration: BoxDecoration(
                             color: sel
-                                ? const Color(0xFF00BFA5).withValues(alpha: 0.1)
+                                ? const Color(0xFF00B8DB).withValues(alpha: 0.1)
                                 : Colors.transparent,
                             border: Border.all(
                               color: sel
-                                  ? const Color(0xFF00BFA5)
+                                  ? const Color(0xFF00B8DB)
                                   : const Color(0xFFDDE3E9),
                               width: sel ? 1.5 : 1,
                             ),
@@ -1983,7 +1986,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               '${d}m',
                               style: TextStyle(
                                 color: sel
-                                    ? const Color(0xFF00BFA5)
+                                  ? const Color(0xFF00B8DB)
                                     : const Color(0xFF7F8C8D),
                                 fontSize: 13,
                                 fontWeight:
@@ -2020,7 +2023,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     Navigator.of(ctx).pop();
                   },
                   child: const Text('Save',
-                      style: TextStyle(color: Color(0xFF00BFA5))),
+                      style: TextStyle(color: Color(0xFF00B8DB))),
                 ),
               ],
             );
