@@ -73,6 +73,98 @@ def _init_redis():
 _redis_client = _init_redis()
 
 
+def _rollup_doc_id(device_id: str, bucket_start: datetime) -> str:
+    return f"{device_id}_{bucket_start.strftime('%Y%m%d%H%M')}"
+
+
+def _update_rollup_doc(collection_name: str, device_id: str, bucket_start: datetime,
+                       level: float, volume: float, flow_rate: float, pump_active: bool,
+                       turbidity: float, ph: float, tds: float):
+    """Upsert one aggregate bucket document for a device/time window."""
+    if not FIREBASE_ENABLED or db is None:
+        return
+
+    doc_ref = db.collection(collection_name).document(
+        _rollup_doc_id(device_id, bucket_start)
+    )
+    snapshot = doc_ref.get()
+    existing = snapshot.to_dict() if snapshot.exists else None
+
+    count = int(existing.get("count", 0)) + 1 if existing else 1
+
+    def _next_avg(field: str, value: float) -> float:
+        if not existing:
+            return value
+        prev_avg = float(existing.get(field, value))
+        prev_count = max(int(existing.get("count", 0)), 1)
+        return ((prev_avg * prev_count) + value) / count
+
+    def _next_min(field: str, value: float) -> float:
+        return min(float(existing.get(field, value)), value) if existing else value
+
+    def _next_max(field: str, value: float) -> float:
+        return max(float(existing.get(field, value)), value) if existing else value
+
+    doc_ref.set({
+        "device_id": device_id,
+        "bucket_start": bucket_start,
+        "count": count,
+        "level_avg": _next_avg("level_avg", level),
+        "level_min": _next_min("level_min", level),
+        "level_max": _next_max("level_max", level),
+        "volume_avg": _next_avg("volume_avg", volume),
+        "volume_min": _next_min("volume_min", volume),
+        "volume_max": _next_max("volume_max", volume),
+        "flow_rate_avg": _next_avg("flow_rate_avg", flow_rate),
+        "flow_rate_min": _next_min("flow_rate_min", flow_rate),
+        "flow_rate_max": _next_max("flow_rate_max", flow_rate),
+        "turbidity_avg": _next_avg("turbidity_avg", turbidity),
+        "turbidity_min": _next_min("turbidity_min", turbidity),
+        "turbidity_max": _next_max("turbidity_max", turbidity),
+        "ph_avg": _next_avg("ph_avg", ph),
+        "ph_min": _next_min("ph_min", ph),
+        "ph_max": _next_max("ph_max", ph),
+        "tds_avg": _next_avg("tds_avg", tds),
+        "tds_min": _next_min("tds_min", tds),
+        "tds_max": _next_max("tds_max", tds),
+        "pump_active_count": (int(existing.get("pump_active_count", 0)) if existing else 0)
+            + (1 if pump_active else 0),
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }, merge=True)
+
+
+def _update_sensor_rollups(device_id: str, observed_at: datetime,
+                           level: float, volume: float, flow_rate: float, pump_active: bool,
+                           turbidity: float, ph: float, tds: float):
+    hour_bucket = observed_at.replace(minute=0, second=0, microsecond=0)
+    day_bucket = observed_at.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    _update_rollup_doc(
+        "sensor_rollups_hourly",
+        device_id,
+        hour_bucket,
+        level,
+        volume,
+        flow_rate,
+        pump_active,
+        turbidity,
+        ph,
+        tds,
+    )
+    _update_rollup_doc(
+        "sensor_rollups_daily",
+        device_id,
+        day_bucket,
+        level,
+        volume,
+        flow_rate,
+        pump_active,
+        turbidity,
+        ph,
+        tds,
+    )
+
+
 def _state_to_json(s: dict, h: dict) -> str:
     """Serialise state + historical_data to a JSON string (convert datetimes)."""
     def _default(obj):
@@ -658,6 +750,7 @@ async def handle_sensor_data(data: dict):
     # Firestore write (throttled — at most once every FIRESTORE_WRITE_INTERVAL_S seconds)
     if FIREBASE_ENABLED and db is not None and _should_write_firestore(device_id):
         try:
+            observed_at = datetime.now()
             reading_doc = {
                 "device_id": device_id,
                 "timestamp": firestore.SERVER_TIMESTAMP,
@@ -671,6 +764,17 @@ async def handle_sensor_data(data: dict):
                 "status": state["tank_data"]["status"],
             }
             db.collection("sensor_readings").add(reading_doc)
+            _update_sensor_rollups(
+                device_id,
+                observed_at,
+                state["tank_data"]["level"],
+                state["tank_data"]["volume"],
+                state["tank_data"]["flow_rate"],
+                pump_active,
+                turb,
+                ph,
+                tds,
+            )
             logger.info(f"[Firestore] Wrote sensor reading for {device_id}: turb={turb:.2f}")
         except Exception as e:
             logger.error(f"Firestore sensor_readings write error: {e}")

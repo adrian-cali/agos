@@ -148,7 +148,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ?? const UserThresholds();
     // ── Connection state ───────────────────────────────────────────────────
     final isLive = ref.watch(wsConnectedProvider);
-    final lastData = ref.watch(wsLastDataProvider);
+    final wsLastData = ref.watch(wsLastDataProvider);
 
     // ── WebSocket fallback (for Windows where Firestore threading may drop data)
     final waterQuality = ref.watch(waterQualityProvider);
@@ -179,6 +179,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final turbidityProgress = (turbidityVal / thresholds.turbidityMax).clamp(0.0, 1.0);
     final phProgress        = (phVal / 14.0).clamp(0.0, 1.0);
     final tdsProgress       = (tdsVal / thresholds.tdsMax).clamp(0.0, 1.0);
+    final headerLastData = wsLastData ?? reading?.timestamp;
     // ──────────────────────────────────────────────────────────────────────
 
     return Scaffold(
@@ -189,7 +190,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: Column(
             children: [
               // Header with blue gradient and particles (no animation)
-              _buildHeader(deviceLocation, isLive: isLive, lastData: lastData),
+              _buildHeader(deviceLocation, isLive: isLive, lastData: headerLastData),
               // Scrollable content
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 25),
@@ -1061,6 +1062,9 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
 
   // Maps x-value → actual timestamp for tooltips
   final Map<int, DateTime> _timestampMap = {};
+  final Map<int, RollupReading> _rollupMap = {};
+  List<FlSpot> _rollupMinSpots = const [];
+  List<FlSpot> _rollupMaxSpots = const [];
 
   /// X coordinate helpers:
   ///  24H → x = minutes since start of the 24-hour window (0 = 24h ago, 1440 = now)
@@ -1080,6 +1084,10 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
 
   bool _hasLiveData = false;
   String? _dataError;
+
+  bool get _usesRollups =>
+      _selectedPeriod == TimePeriod.sevenDays ||
+      _selectedPeriod == TimePeriod.thirtyDays;
 
   /// Build spots merging Firestore history with live WebSocket points not yet in Firestore.
   /// Used for 24H/7D/30D views so the chart updates immediately on new WS data.
@@ -1167,6 +1175,69 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     }
     result.sort((a, b) => a.x.compareTo(b.x));
     return result;
+  }
+
+  List<FlSpot> _buildRollupSpots(AsyncValue<List<RollupReading>> historyAsync) {
+    _rollupMap.clear();
+    _rollupMinSpots = const [];
+    _rollupMaxSpots = const [];
+
+    if (historyAsync.hasError) {
+      _timestampMap.clear();
+      _hasLiveData = false;
+      _dataError = historyAsync.error.toString();
+      return [];
+    }
+    _dataError = null;
+
+    final readings = historyAsync.valueOrNull ?? [];
+    if (readings.isEmpty) {
+      _timestampMap.clear();
+      _hasLiveData = false;
+      return [];
+    }
+
+    _timestampMap.clear();
+    final avgSpots = <FlSpot>[];
+    final minSpots = <FlSpot>[];
+    final maxSpots = <FlSpot>[];
+
+    for (final r in readings) {
+      final dt = r.bucketStart;
+      final x = _toX(dt);
+
+      late final double avgValue;
+      late final double minValue;
+      late final double maxValue;
+      switch (_firestoreField) {
+        case 'turbidity':
+          avgValue = r.turbidityAvg;
+          minValue = r.turbidityMin;
+          maxValue = r.turbidityMax;
+          break;
+        case 'ph':
+          avgValue = r.phAvg;
+          minValue = r.phMin;
+          maxValue = r.phMax;
+          break;
+        default:
+          avgValue = r.tdsAvg;
+          minValue = r.tdsMin;
+          maxValue = r.tdsMax;
+      }
+
+      final xInt = x.round();
+      _timestampMap[xInt] = dt;
+      _rollupMap[xInt] = r;
+      avgSpots.add(FlSpot(x, avgValue));
+      minSpots.add(FlSpot(x, minValue));
+      maxSpots.add(FlSpot(x, maxValue));
+    }
+
+    _rollupMinSpots = minSpots;
+    _rollupMaxSpots = maxSpots;
+    _hasLiveData = avgSpots.isNotEmpty;
+    return avgSpots;
   }
 
   /// Full period window in the X coordinate unit.
@@ -1321,13 +1392,14 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           const SizedBox(height: 16),
           Builder(builder: (_) {
             // 1H → use live rolling WebSocket buffer (real-time waveform, no cutoff lag)
-            // 24H/7D/30D → Firestore history + live WS points merged for real-time updates
+            // 24H → raw Firestore history + live WS merge
+            // 7D/30D → rollup collections (avg line + min/max band)
             final List<FlSpot> spots;
             if (_selectedPeriod == TimePeriod.oneHour) {
               final livePoints = ref.watch(liveChartPointsProvider);
               _dataError = null;
               spots = _buildLiveSpots(livePoints);
-            } else {
+            } else if (_selectedPeriod == TimePeriod.twentyFourHours) {
               final historyAsync = ref.watch(
                 readingHistoryProvider((_deviceId, _periodHours, _refreshTick)),
               );
@@ -1343,6 +1415,26 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                 );
               }
               spots = _buildMergedSpots(historyAsync, livePoints);
+            } else {
+              final rollupAsync = ref.watch(
+                rollupHistoryProvider((
+                  _deviceId,
+                  _selectedPeriod == TimePeriod.sevenDays
+                      ? 'sensor_rollups_hourly'
+                      : 'sensor_rollups_daily',
+                  _periodHours,
+                  _refreshTick,
+                )),
+              );
+              if (rollupAsync.isLoading) {
+                return const SizedBox(
+                  height: 200,
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              }
+              spots = _buildRollupSpots(rollupAsync);
             }
             if (_dataError != null) {
               return SizedBox(
@@ -1550,7 +1642,10 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     _effectiveMaxX = effectiveMaxX; // save for gesture handler
 
     // Dynamic Y range based on actual data
-    final yRange = _computeYRange(spots);
+    final ySource = _usesRollups
+      ? [..._rollupMinSpots, ..._rollupMaxSpots, ...spots]
+      : spots;
+    final yRange = _computeYRange(ySource);
     final yMin = yRange.min;
     final yMax = yRange.max;
     final yInterval = yRange.interval;
@@ -1561,28 +1656,72 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
     final visMaxX = (visMinX + windowSize).clamp(visMinX, effectiveMaxX);
 
     final segments = _splitIntoSegments(spots);
+    final lineBarsData = _usesRollups &&
+            _rollupMinSpots.length == spots.length &&
+            _rollupMaxSpots.length == spots.length &&
+            spots.isNotEmpty
+        ? <LineChartBarData>[
+            LineChartBarData(
+              spots: _rollupMinSpots,
+              isCurved: true,
+              curveSmoothness: 0.2,
+              color: Colors.transparent,
+              barWidth: 1,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: false),
+            ),
+            LineChartBarData(
+              spots: _rollupMaxSpots,
+              isCurved: true,
+              curveSmoothness: 0.2,
+              color: Colors.transparent,
+              barWidth: 1,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: false),
+            ),
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              curveSmoothness: 0.2,
+              gradient: widget.gradient,
+              barWidth: 2.5,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: false),
+            ),
+          ]
+        : segments.map((segSpots) => LineChartBarData(
+              spots: segSpots,
+              isCurved: true,
+              curveSmoothness: 0.35,
+              gradient: widget.gradient,
+              barWidth: 2.5,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                gradient: LinearGradient(
+                  colors: [
+                    widget.primaryColor.withValues(alpha: 0.15),
+                    Colors.transparent,
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            )).toList();
 
     return LineChartData(
-      lineBarsData: segments.map((segSpots) => LineChartBarData(
-          spots: segSpots,
-          isCurved: true,
-          curveSmoothness: 0.35,
-          gradient: widget.gradient,
-          barWidth: 2.5,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            gradient: LinearGradient(
-              colors: [
-                widget.primaryColor.withValues(alpha: 0.15),
-                Colors.transparent,
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-        )).toList(),
+      lineBarsData: lineBarsData,
+      betweenBarsData: _usesRollups && lineBarsData.length >= 2
+          ? [
+              BetweenBarsData(
+                fromIndex: 0,
+                toIndex: 1,
+                color: widget.primaryColor.withValues(alpha: 0.12),
+              ),
+            ]
+          : const [],
       titlesData: FlTitlesData(
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -1658,6 +1797,41 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
               default: unit = ' NTU'; // Turbidity
             }
             return touchedSpots.map((spot) {
+              if (_usesRollups) {
+                if (spot.barIndex != 2) return null;
+                final rollup = _rollupMap[spot.x.round()];
+                if (rollup == null) return null;
+
+                late final double avgValue;
+                late final double minValue;
+                late final double maxValue;
+                switch (_firestoreField) {
+                  case 'turbidity':
+                    avgValue = rollup.turbidityAvg;
+                    minValue = rollup.turbidityMin;
+                    maxValue = rollup.turbidityMax;
+                    break;
+                  case 'ph':
+                    avgValue = rollup.phAvg;
+                    minValue = rollup.phMin;
+                    maxValue = rollup.phMax;
+                    break;
+                  default:
+                    avgValue = rollup.tdsAvg;
+                    minValue = rollup.tdsMin;
+                    maxValue = rollup.tdsMax;
+                }
+
+                return LineTooltipItem(
+                  '${_getTooltipX(spot.x)}\nAvg: ${avgValue.toStringAsFixed(2)}$unit\nMin: ${minValue.toStringAsFixed(2)}$unit\nMax: ${maxValue.toStringAsFixed(2)}$unit',
+                  TextStyle(
+                    color: widget.primaryColor,
+                    fontSize: 12,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w500,
+                  ),
+                );
+              }
               return LineTooltipItem(
                 '${_getTooltipX(spot.x)}\n${spot.y.toStringAsFixed(2)}$unit',
                 TextStyle(

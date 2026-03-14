@@ -51,6 +51,56 @@ class SensorReading {
   }
 }
 
+class RollupReading {
+  final String deviceId;
+  final DateTime bucketStart;
+  final int count;
+  final double turbidityAvg;
+  final double turbidityMin;
+  final double turbidityMax;
+  final double phAvg;
+  final double phMin;
+  final double phMax;
+  final double tdsAvg;
+  final double tdsMin;
+  final double tdsMax;
+
+  const RollupReading({
+    required this.deviceId,
+    required this.bucketStart,
+    required this.count,
+    required this.turbidityAvg,
+    required this.turbidityMin,
+    required this.turbidityMax,
+    required this.phAvg,
+    required this.phMin,
+    required this.phMax,
+    required this.tdsAvg,
+    required this.tdsMin,
+    required this.tdsMax,
+  });
+
+  factory RollupReading.fromFirestore(
+      DocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data()!;
+    final ts = d['bucket_start'];
+    return RollupReading(
+      deviceId: d['device_id'] ?? '',
+      bucketStart: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      count: (d['count'] ?? 0) as int,
+      turbidityAvg: (d['turbidity_avg'] ?? 0).toDouble(),
+      turbidityMin: (d['turbidity_min'] ?? 0).toDouble(),
+      turbidityMax: (d['turbidity_max'] ?? 0).toDouble(),
+      phAvg: (d['ph_avg'] ?? 0).toDouble(),
+      phMin: (d['ph_min'] ?? 0).toDouble(),
+      phMax: (d['ph_max'] ?? 0).toDouble(),
+      tdsAvg: (d['tds_avg'] ?? 0).toDouble(),
+      tdsMin: (d['tds_min'] ?? 0).toDouble(),
+      tdsMax: (d['tds_max'] ?? 0).toDouble(),
+    );
+  }
+}
+
 class UserProfile {
   final String uid;
   final String name;
@@ -286,8 +336,9 @@ class FirestoreService {
 
 
   /// Sensor readings for the last [hours] hours, suitable for charts.
-  /// Reads only the [maxPoints] most-recent documents within the window.
-  /// Uses composite index: device_id ASC + timestamp DESC.
+  /// Reads the full time window so long periods (7D/30D) keep their true span,
+  /// then downsamples to [maxPoints] for rendering performance.
+  /// Uses composite index: device_id ASC + timestamp ASC.
   Stream<List<SensorReading>> historyStream(
     String deviceId, {
     int hours = 24,
@@ -299,17 +350,37 @@ class FirestoreService {
         .where('device_id', isEqualTo: deviceId)
         .where('timestamp',
             isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
-        .orderBy('timestamp', descending: true)
-        .limit(maxPoints)
+        .orderBy('timestamp')
         .snapshots()
         .map((snap) {
-          // Reverse to get ascending order (oldest first) for chart rendering
-          return snap.docs
-              .map(SensorReading.fromFirestore)
-              .toList()
-              .reversed
-              .toList();
+          final readings = snap.docs.map(SensorReading.fromFirestore).toList();
+          if (readings.length <= maxPoints) return readings;
+
+          // Evenly sample across the whole window so oldest/newest points remain visible.
+          final stride = (readings.length - 1) / (maxPoints - 1);
+          final sampled = <SensorReading>[];
+          for (int i = 0; i < maxPoints; i++) {
+            final idx = (i * stride).round().clamp(0, readings.length - 1);
+            sampled.add(readings[idx]);
+          }
+          return sampled;
         });
+  }
+
+  Stream<List<RollupReading>> rollupHistoryStream(
+    String deviceId, {
+    required String collectionName,
+    required int hours,
+  }) {
+    final cutoff = DateTime.now().subtract(Duration(hours: hours));
+    return _db
+        .collection(collectionName)
+        .where('device_id', isEqualTo: deviceId)
+        .where('bucket_start',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+        .orderBy('bucket_start')
+        .snapshots()
+        .map((snap) => snap.docs.map(RollupReading.fromFirestore).toList());
   }
 
   /// Fetch user profile from Firestore.
@@ -597,6 +668,18 @@ final readingHistoryProvider =
   final (deviceId, hours, _) = args; // tick is intentionally ignored — only forces new instance
   final service = ref.watch(firestoreServiceProvider);
   return service.historyStream(deviceId, hours: hours);
+});
+
+/// Rollup history stream for long-range charts: (deviceId, collectionName, hours, tick).
+final rollupHistoryProvider =
+    StreamProvider.family<List<RollupReading>, (String, String, int, int)>((ref, args) {
+  final (deviceId, collectionName, hours, _) = args;
+  final service = ref.watch(firestoreServiceProvider);
+  return service.rollupHistoryStream(
+    deviceId,
+    collectionName: collectionName,
+    hours: hours,
+  );
 });
 
 /// User profile stream for the signed-in user.

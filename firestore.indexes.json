@@ -15,6 +15,22 @@
         { "fieldPath": "device_id", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "sensor_rollups_hourly",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "device_id", "order": "ASCENDING" },
+        { "fieldPath": "bucket_start", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sensor_rollups_daily",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "device_id", "order": "ASCENDING" },
+        { "fieldPath": "bucket_start", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
