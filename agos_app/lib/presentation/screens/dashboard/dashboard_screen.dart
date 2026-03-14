@@ -1214,32 +1214,46 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
   }
 
   String _getTooltipX(double value) {
+    String formatForPeriod(DateTime dt) {
+      final mm = dt.month.toString().padLeft(2, '0');
+      final dd = dt.day.toString().padLeft(2, '0');
+      final hh = dt.hour.toString().padLeft(2, '0');
+      final min = dt.minute.toString().padLeft(2, '0');
+
+      switch (_selectedPeriod) {
+        case TimePeriod.oneHour:
+          return '$hh:$min';
+        case TimePeriod.twentyFourHours:
+        case TimePeriod.sevenDays:
+        case TimePeriod.thirtyDays:
+          return '$mm/$dd $hh:$min';
+      }
+    }
+
     // Look up actual timestamp by nearest integer x
     final xInt = value.round();
     final ts = _timestampMap[xInt];
     if (ts != null) {
-      final h = ts.hour.toString().padLeft(2, '0');
-      final m = ts.minute.toString().padLeft(2, '0');
-      return '$h:$m';
+      return formatForPeriod(ts);
     }
     // Fallback: reconstruct approximate time
     final now = DateTime.now();
     switch (_selectedPeriod) {
       case TimePeriod.oneHour: {
         final dt = now.subtract(Duration(minutes: (60 - value).round()));
-        return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        return formatForPeriod(dt);
       }
       case TimePeriod.twentyFourHours: {
         final dt = now.subtract(Duration(minutes: (1440 - value).round()));
-        return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        return formatForPeriod(dt);
       }
       case TimePeriod.sevenDays: {
         final dt = now.subtract(Duration(hours: (168 - value).round()));
-        return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:00';
+        return formatForPeriod(dt);
       }
       case TimePeriod.thirtyDays: {
         final dt = now.subtract(Duration(hours: (720 - value).round()));
-        return '${dt.month}/${dt.day}';
+        return formatForPeriod(dt);
       }
     }
   }

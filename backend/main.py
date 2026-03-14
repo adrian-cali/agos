@@ -793,6 +793,7 @@ async def handle_get_history(data: dict, websocket: WebSocket):
 
 # active pump countdown task handle
 _pump_countdown_task: Optional[asyncio.Task] = None
+_bypass_auto_off_task: Optional[asyncio.Task] = None
 
 
 async def _pump_countdown_loop(duration_seconds: int):
@@ -869,15 +870,58 @@ async def handle_uv_command(data: dict):
     logger.info(f"UV command: {action}")
 
 
+async def _bypass_auto_off_loop(duration_seconds: int, expected_last_run: str):
+    """Turn bypass pump off after duration, unless a newer run has started."""
+    await asyncio.sleep(max(0, duration_seconds))
+
+    # Ignore stale timer from an older run.
+    if state["bypass"].get("last_run") != expected_last_run:
+        return
+
+    state["bypass"]["pump_on"] = False
+
+    off_msg = {
+        "type": "bypass_command",
+        "action": "off",
+        "duration_seconds": 0,
+        "source": "timer_expired",
+        "timestamp": datetime.now().isoformat(),
+    }
+    disconnected = set()
+    for conn in list(manager.sensor_connections):
+        try:
+            await conn.send_json(off_msg)
+        except Exception:
+            disconnected.add(conn)
+    for c in disconnected:
+        manager.sensor_connections.discard(c)
+
+    await manager.broadcast_to_apps({
+        "type": "bypass_update",
+        "bypass_pump_on": False,
+        "last_run": state["bypass"].get("last_run"),
+        "timestamp": datetime.now().isoformat(),
+    })
+    logger.info(f"Bypass auto-off: timer expired after {duration_seconds}s")
+
+
 async def handle_bypass_command(data: dict):
     """Received from Flutter: manual bypass pump trigger."""
+    global _bypass_auto_off_task
+
     action = data.get("action", "off")
     duration_seconds = int(data.get("duration_seconds",
                                      state["bypass"]["schedule"].get("duration_seconds", 1800)))
     is_on = action == "on"
 
+    # Cancel any previous auto-off task when a new manual bypass command arrives.
+    if _bypass_auto_off_task and not _bypass_auto_off_task.done():
+        _bypass_auto_off_task.cancel()
+        _bypass_auto_off_task = None
+
+    state["bypass"]["pump_on"] = is_on
+
     if is_on:
-        state["bypass"]["pump_on"] = True
         state["bypass"]["last_run"] = datetime.now().isoformat()
 
     forward_msg = {
@@ -902,6 +946,14 @@ async def handle_bypass_command(data: dict):
         "last_run": state["bypass"]["last_run"],
         "timestamp": datetime.now().isoformat(),
     })
+
+    # Manual ON with finite duration should auto-off server-side even if ESP32
+    # doesn't report a final state update.
+    if is_on and duration_seconds > 0:
+        _bypass_auto_off_task = asyncio.create_task(
+            _bypass_auto_off_loop(duration_seconds, state["bypass"]["last_run"])
+        )
+
     logger.info(f"Bypass command: {action}, duration={duration_seconds}s")
 
 
@@ -946,6 +998,8 @@ async def handle_bypass_schedule(data: dict):
 
 async def _bypass_schedule_loop():
     """Background task: fire bypass_command to ESP32 at the configured daily time."""
+    global _bypass_auto_off_task
+
     last_trigger_date = None
     while True:
         await asyncio.sleep(30)  # check every 30 s
@@ -962,6 +1016,11 @@ async def _bypass_schedule_loop():
                 last_trigger_date = today
                 state["bypass"]["pump_on"] = True
                 state["bypass"]["last_run"] = now.isoformat()
+
+                if _bypass_auto_off_task and not _bypass_auto_off_task.done():
+                    _bypass_auto_off_task.cancel()
+                    _bypass_auto_off_task = None
+
                 bypass_msg = {
                     "type": "bypass_command",
                     "action": "on",
@@ -983,6 +1042,12 @@ async def _bypass_schedule_loop():
                     "last_run": now.isoformat(),
                     "timestamp": now.isoformat(),
                 })
+
+                if dur_sec > 0:
+                    _bypass_auto_off_task = asyncio.create_task(
+                        _bypass_auto_off_loop(dur_sec, state["bypass"]["last_run"])
+                    )
+
                 logger.info(f"[Bypass] Scheduled trigger at {hour:02d}:{minute:02d}, dur={dur_sec}s")
         except Exception as e:
             logger.warning(f"Bypass schedule loop error: {e}")
