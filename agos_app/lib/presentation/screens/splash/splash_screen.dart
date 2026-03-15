@@ -52,33 +52,47 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void _navigateBasedOnAuth() async {
-    User? user;
-    if (kIsWeb) {
-      // On web, currentUser can be null while Firebase restores the session.
-      // Wait up to 5s for the first authStateChanges event before giving up.
-      try {
-        user = await FirebaseAuth.instance
-            .authStateChanges()
-            .first
-            .timeout(const Duration(seconds: 5));
-      } catch (_) {
+    try {
+      User? user;
+      if (kIsWeb) {
+        // On web, currentUser can be null while Firebase restores the session.
+        // Wait up to 5s for the first authStateChanges event before giving up.
+        try {
+          user = await FirebaseAuth.instance
+              .authStateChanges()
+              .first
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {
+          user = FirebaseAuth.instance.currentUser;
+        }
+      } else {
         user = FirebaseAuth.instance.currentUser;
       }
-    } else {
-      user = FirebaseAuth.instance.currentUser;
-    }
 
-    if (user == null) {
-      if (mounted) Navigator.pushReplacementNamed(context, '/login');
-      return;
+      if (user == null) {
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+        return;
+      }
+      // Check if the user has already set up a device
+      final hasDevice =
+          await FirestoreService().hasLinkedDevice(user.uid).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('Firestore hasLinkedDevice timeout, defaulting to welcome');
+          return false;
+        },
+      );
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        hasDevice ? '/home' : '/welcome',
+      );
+    } catch (e) {
+      debugPrint('Auth navigation error: $e');
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
     }
-    // Check if the user has already set up a device
-    final hasDevice = await FirestoreService().hasLinkedDevice(user.uid);
-    if (!mounted) return;
-    Navigator.pushReplacementNamed(
-      context,
-      hasDevice ? '/home' : '/welcome',
-    );
   }
 
   @override
