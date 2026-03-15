@@ -904,7 +904,7 @@ class ParticlesPainter extends CustomPainter {
     for (final particle in particles) {
       particle.update(size.width, size.height, animationValue * 20);
       
-      paint.color = const Color(0xFF53EAFD).withValues(alpha: particle.opacity * 0.3);
+      paint.color = const Color(0xFF53EAFD).withOpacity(particle.opacity * 0.3);
       canvas.drawCircle(
         Offset(particle.x, particle.y),
         particle.size,
