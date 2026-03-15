@@ -1,4 +1,5 @@
-from datetime import datetime
+import argparse
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import sys
@@ -110,12 +111,16 @@ def finalize_agg(agg: dict) -> dict:
     }
 
 
-def fetch_all_readings(db, device_id: str | None):
+def fetch_all_readings(db, device_id: str | None, since_days: int | None, max_readings: int | None):
     query = db.collection("sensor_readings").order_by("timestamp")
     if device_id:
         query = query.where("device_id", "==", device_id)
+    if since_days is not None and since_days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
+        query = query.where("timestamp", ">=", cutoff)
 
     last_doc = None
+    yielded = 0
     while True:
         page = query.limit(PAGE_SIZE)
         if last_doc is not None:
@@ -128,6 +133,9 @@ def fetch_all_readings(db, device_id: str | None):
             ts = data.get("timestamp")
             if not ts:
                 continue
+            if max_readings is not None and yielded >= max_readings:
+                return
+            yielded += 1
             yield {
                 "device_id": data.get("device_id", ""),
                 "timestamp": ts.to_datetime() if hasattr(ts, "to_datetime") else ts,
@@ -184,11 +192,33 @@ def write_rollups(db, collection_name: str, rollups: dict):
 
 
 def main():
-    device_id = sys.argv[1] if len(sys.argv) > 1 else None
+    parser = argparse.ArgumentParser(
+        description="Backfill Firestore hourly/daily rollups from sensor_readings."
+    )
+    parser.add_argument(
+        "--device-id",
+        dest="device_id",
+        default=None,
+        help="Optional device_id filter.",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Only backfill data from the last N days.",
+    )
+    parser.add_argument(
+        "--max-readings",
+        type=int,
+        default=None,
+        help="Optional safety cap on raw readings to process.",
+    )
+    args = parser.parse_args()
+
     db = init_firebase()
 
     print("Fetching sensor readings...")
-    readings = list(fetch_all_readings(db, device_id))
+    readings = list(fetch_all_readings(db, args.device_id, args.days, args.max_readings))
     print(f"Fetched {len(readings)} raw readings")
 
     print("Building rollups...")
