@@ -60,7 +60,7 @@ flutter_native_splash:
   # Removed image to speed up native splash display
   # The Flutter splash screen shows the proper AGOS branding immediately
   android: true
-  ios: true
+  ios: false  # Disable native splash on iOS for sideloaded builds
   web: false
   android_12:
     color: "#FFFFFF"
