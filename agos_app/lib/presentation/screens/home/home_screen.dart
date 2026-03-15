@@ -1420,9 +1420,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 scale: 0.9,
                 child: Switch(
                   value: uvOn,
-                  activeThumbColor: const Color(0xFF00B8DB),
+                  thumbColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return const Color(0xFF00B8DB);
+                    }
+                    return const Color(0xFF7F8C8D);
+                  }),
                   activeTrackColor: const Color(0xFF00B8DB).withOpacity(0.35),
-                  inactiveThumbColor: const Color(0xFF7F8C8D),
                   inactiveTrackColor: const Color(0xFFDDE3E9),
                   onChanged: (val) {
                     ref.read(webSocketServiceProvider).sendUvCommand(on: val);
