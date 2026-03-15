@@ -50,5 +50,19 @@ service cloud.firestore {
       allow read, write: if isAuth() && request.auth.uid == userId;
     }
 
+    // ── Sensor rollups (daily): any authenticated user can read their device's data
+    // Backend (Admin SDK) writes these via backfill process
+    match /sensor_rollups_daily/{rollupId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    // ── Sensor rollups (hourly): any authenticated user can read their device's data
+    // Backend (Admin SDK) writes these via backfill process
+    match /sensor_rollups_hourly/{rollupId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
   }
 }
