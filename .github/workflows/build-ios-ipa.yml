@@ -55,6 +55,6 @@ jobs:
         with:
           name: ios-ipa
           path: agos_app/build/ios/ipa/*.ipa
-          retention-days: 30
+          retention-days: 90
           if-no-files-found: warn
 
