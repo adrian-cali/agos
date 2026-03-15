@@ -41,6 +41,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
 
 flutter_launcher_icons:
   android: true
@@ -56,13 +57,13 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/images/agos_app_splash_icon_1024.png
+  # Removed image to speed up native splash display
+  # The Flutter splash screen shows the proper AGOS branding immediately
   android: true
   ios: true
   web: false
   android_12:
     color: "#FFFFFF"
-    image: assets/images/agos_app_splash_icon_1024.png
 
 flutter:
   uses-material-design: true
