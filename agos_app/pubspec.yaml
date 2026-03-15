@@ -65,6 +65,9 @@ flutter_native_splash:
     color: "#FFFFFF"
     image: assets/images/agos_app_splash_icon_1024.png
 
+dependency_overrides:
+  path: ^1.9.1
+
 flutter:
   uses-material-design: true
   assets:
