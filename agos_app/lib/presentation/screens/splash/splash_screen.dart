@@ -22,33 +22,47 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('SplashScreen: initState starting...');
 
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
-    );
-    _fadeController.forward();
+    try {
+      _fadeController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1200),
+      );
+      _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
+        CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
+      );
+      _fadeController.forward();
 
-    // Dots bouncing animation
-    _dotsController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat();
+      // Dots bouncing animation
+      _dotsController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1400),
+      )..repeat();
 
-    // Wave moving animation
-    _waveController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
+      // Wave moving animation
+      _waveController = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 6),
+      )..repeat();
+      
+      debugPrint('SplashScreen: Animations initialized');
 
-    // Auto-navigate after 2.5 seconds based on Firebase auth state
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (!mounted) return;
-      _navigateBasedOnAuth();
-    });
+      // Auto-navigate after 2.5 seconds based on Firebase auth state
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        debugPrint('SplashScreen: Navigation timer fired');
+        if (!mounted) return;
+        _navigateBasedOnAuth();
+      });
+    } catch (e) {
+      debugPrint('SplashScreen: Error in initState: $e');
+      // Force navigation to login on error
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/login');
+        }
+      });
+    }
   }
 
   void _navigateBasedOnAuth() async {
@@ -92,6 +106,36 @@ class _SplashScreenState extends State<SplashScreen>
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
       }
+    }
+  }
+
+  Widget _buildLogo() {
+    try {
+      return SvgPicture.asset(
+        'assets/svg/agos_logo.svg',
+        fit: BoxFit.contain,
+      );
+    } catch (e) {
+      debugPrint('Error loading SVG logo: $e');
+      // Fallback: simple circle with text
+      return Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF00B8DB), Color(0xFF155DFC)],
+          ),
+          shape: BoxShape.circle,
+        ),
+        child: const Center(
+          child: Text(
+            'AGOS',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -153,9 +197,8 @@ class _SplashScreenState extends State<SplashScreen>
                       SizedBox(
                         width: double.infinity,
                         height: 100,
-                        child: SvgPicture.asset(
-                          'assets/svg/agos_logo.svg',
-                          fit: BoxFit.contain,
+                        child: Center(
+                          child:  _buildLogo(),
                         ),
                       ),
                       const SizedBox(height: 15),
