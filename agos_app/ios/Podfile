@@ -41,6 +41,11 @@ post_install do |installer|
     # Set minimum deployment target for all pods
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # Fix CocoaPods/Xcode configuration conflict
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        'COCOAPODS=1',
+      ]
     end
   end
 end
