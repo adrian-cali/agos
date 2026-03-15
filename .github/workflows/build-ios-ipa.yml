@@ -26,9 +26,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS runner
-        run: flutter ios-static-framework-archive --output=framework --release
-
       - name: Build IPA (no codesign)
         run: |
           flutter build ipa \
