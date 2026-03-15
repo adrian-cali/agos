@@ -674,3 +674,5 @@ DEVICE_UPDATE_INTERVAL_S = 60     # 1 device update per 60s
 - [ ] Pump relay wired and tested
 - [ ] All sensors (turbidity, pH, TDS, flow, level) calibrated
 - [ ] Device registered via `POST /devices/register`
+#   B u i l d :   2 0 2 6 - 0 3 - 1 5   1 5 : 4 7 : 4 5  
+ 
