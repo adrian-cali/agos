@@ -181,7 +181,7 @@ class _SetupCompleteScreenState extends ConsumerState<SetupCompleteScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                              color: const Color(0xFF5DADE2).withOpacity(0.15),
                               blurRadius: 8,
                             ),
                           ],
@@ -220,12 +220,12 @@ class _SetupCompleteScreenState extends ConsumerState<SetupCompleteScreen>
                             borderRadius: BorderRadius.circular(14),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
+                                color: Colors.black.withOpacity(0.1),
                                 blurRadius: 15,
                                 offset: const Offset(0, 10),
                               ),
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
+                                color: Colors.black.withOpacity(0.1),
                                 blurRadius: 6,
                                 offset: const Offset(0, 4),
                               ),

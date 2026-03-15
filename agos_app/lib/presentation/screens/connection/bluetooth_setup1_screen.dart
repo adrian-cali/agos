@@ -123,10 +123,10 @@ class _BluetoothSetup1ScreenState extends State<BluetoothSetup1Screen> {
                   decoration: BoxDecoration(
                     color: ConnectionMethodDesign.cardBackground,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.neutral5.withValues(alpha: 0.6)),
+                    border: Border.all(color: AppColors.neutral5.withOpacity(0.6)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
+                        color: Colors.black.withOpacity(0.03),
                         blurRadius: 20,
                         offset: const Offset(0, 8),
                       ),
@@ -181,7 +181,7 @@ class _BluetoothSetup1ScreenState extends State<BluetoothSetup1Screen> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFC27AFF).withValues(alpha: 0.18),
+                                color: const Color(0xFFC27AFF).withOpacity(0.18),
                                 blurRadius: 12,
                                 offset: const Offset(0, 6),
                               ),
@@ -287,7 +287,7 @@ class _BluetoothSetup1ScreenState extends State<BluetoothSetup1Screen> {
   //     width: 36,
   //     height: 36,
   //     decoration: BoxDecoration(
-  //       color: isActive ? AppColors.primary : AppColors.neutral5.withValues(alpha: 0.3),
+  //       color: isActive ? AppColors.primary : AppColors.neutral5.withOpacity(0.3),
   //       shape: BoxShape.circle,
   //     ),
   //     child: Center(

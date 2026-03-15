@@ -338,13 +338,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF1BA9E1).withValues(alpha: 0.15),
+                                  color: const Color(0xFF1BA9E1).withOpacity(0.15),
                                   blurRadius: 25,
                                   offset: const Offset(0, 8),
                                   spreadRadius: 2,
                                 ),
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
+                                  color: Colors.black.withOpacity(0.1),
                                   blurRadius: 15,
                                   offset: const Offset(0, 4),
                                 ),
@@ -429,16 +429,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.0),
+                              color: Colors.white.withOpacity(0.0),
                               border: Border.all(
-                                color: isLive ? const Color(0xFF53EAFD) : Colors.white.withValues(alpha: 0.6),
+                                color: isLive ? const Color(0xFF53EAFD) : Colors.white.withOpacity(0.6),
                                 width: 0.8,
                               ),
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
                                   color: (isLive ? const Color(0xFF53EAFD) : Colors.white)
-                                      .withValues(alpha: 0.20),
+                                      .withOpacity(0.20),
                                   blurRadius: 8,
                                   offset: const Offset(0, 0),
                                 ),
@@ -451,7 +451,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   width: 12,
                                   height: 12,
                                   decoration: BoxDecoration(
-                                    color: isLive ? const Color(0xFF53EAFD) : Colors.white.withValues(alpha: 0.7),
+                                    color: isLive ? const Color(0xFF53EAFD) : Colors.white.withOpacity(0.7),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -459,7 +459,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 Text(
                                   isLive ? 'Live' : 'Idle',
                                   style: TextStyle(
-                                    color: isLive ? const Color(0xFF53EAFD) : Colors.white.withValues(alpha: 0.85),
+                                    color: isLive ? const Color(0xFF53EAFD) : Colors.white.withOpacity(0.85),
                                     fontSize: 12,
                                     fontWeight: FontWeight.w400,
                                     fontFamily: 'Inter',
@@ -477,7 +477,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             style: TextStyle(
                               color: isLive
                                   ? const Color(0xFF53EAFD)
-                                  : Colors.white.withValues(alpha: 0.7),
+                                  : Colors.white.withOpacity(0.7),
                               fontSize: 12,
                               fontFamily: 'Inter',
                               fontWeight: FontWeight.w400,
@@ -536,12 +536,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.18),
+          color: Colors.white.withOpacity(0.18),
           width: 1.18,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -612,13 +612,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 15,
                     offset: const Offset(0, 10),
                     spreadRadius: -3,
                   ),
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 6,
                     offset: const Offset(0, 4),
                     spreadRadius: -4,
@@ -694,12 +694,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.18),
+                  color: Colors.white.withOpacity(0.18),
                   width: 1.18,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                    color: const Color(0xFF5DADE2).withOpacity(0.15),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -721,7 +721,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: iconGradient.colors.first.withValues(alpha: 0.3),
+                                color: iconGradient.colors.first.withOpacity(0.3),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -899,7 +899,7 @@ class ParticlesPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0xFF53EAFD).withValues(alpha: 0.3);
+    final paint = Paint()..color = const Color(0xFF53EAFD).withOpacity(0.3);
 
     for (final particle in particles) {
       particle.update(size.width, size.height, animationValue * 20);
@@ -1337,10 +1337,10 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+        border: Border.all(color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1360,7 +1360,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: widget.primaryColor.withValues(alpha: 0.35),
+                      color: widget.primaryColor.withOpacity(0.35),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -1702,7 +1702,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
                 show: true,
                 gradient: LinearGradient(
                   colors: [
-                    widget.primaryColor.withValues(alpha: 0.15),
+                    widget.primaryColor.withOpacity(0.15),
                     Colors.transparent,
                   ],
                   begin: Alignment.topCenter,
@@ -1718,7 +1718,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
               BetweenBarsData(
                 fromIndex: 0,
                 toIndex: 1,
-                color: widget.primaryColor.withValues(alpha: 0.12),
+                color: widget.primaryColor.withOpacity(0.12),
               ),
             ]
           : const [],
@@ -1848,7 +1848,7 @@ class _HistoricalChartCardState extends ConsumerState<_HistoricalChartCard> {
           return spotIndexes.map((index) {
             return TouchedSpotIndicatorData(
               FlLine(
-                color: widget.primaryColor.withValues(alpha: 0.5),
+                color: widget.primaryColor.withOpacity(0.5),
                 strokeWidth: 1.5,
                 dashArray: [4, 4],
               ),

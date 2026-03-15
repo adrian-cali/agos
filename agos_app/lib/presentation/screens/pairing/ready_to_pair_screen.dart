@@ -109,7 +109,7 @@ class _ReadyToPairScreenState extends State<ReadyToPairScreen> {
                   height: 72,
                   child: CircularProgressIndicator(
                     strokeWidth: 4,
-                    color: AppColors.primary.withValues(alpha: 0.85),
+                    color: AppColors.primary.withOpacity(0.85),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -140,13 +140,13 @@ class _ReadyToPairScreenState extends State<ReadyToPairScreen> {
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppColors.primary.withValues(alpha: 0.06)
-                                : Colors.white.withValues(alpha: 0.04),
+                                ? AppColors.primary.withOpacity(0.06)
+                                : Colors.white.withOpacity(0.04),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: isSelected
-                                  ? AppColors.primary.withValues(alpha: 0.18)
-                                  : Colors.white.withValues(alpha: 0.08),
+                                  ? AppColors.primary.withOpacity(0.18)
+                                  : Colors.white.withOpacity(0.08),
                               width: isSelected ? 2 : 1,
                             ),
                           ),
@@ -170,7 +170,7 @@ class _ReadyToPairScreenState extends State<ReadyToPairScreen> {
                                     const SizedBox(height: 4),
                                     Text('ID: ${device['id']}',
                                         style: TextStyle(
-                                            color: Colors.white.withValues(alpha: 0.6),
+                                            color: Colors.white.withOpacity(0.6),
                                             fontSize: 12)),
                                   ],
                                 ),
@@ -391,10 +391,10 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
                     decoration: BoxDecoration(
                       color: ConnectionMethodDesign.cardBackground,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.neutral5.withValues(alpha: 0.6)),
+                      border: Border.all(color: AppColors.neutral5.withOpacity(0.6)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
+                          color: Colors.black.withOpacity(0.03),
                           blurRadius: 20,
                           offset: const Offset(0, 8),
                         ),
@@ -473,7 +473,7 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
                   height: 72,
                   child: CircularProgressIndicator(
                     strokeWidth: 4,
-                    color: AppColors.primary.withValues(alpha: 0.85),
+                    color: AppColors.primary.withOpacity(0.85),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -508,13 +508,13 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppColors.primary.withValues(alpha: 0.06)
+                                ? AppColors.primary.withOpacity(0.06)
                                 : ConnectionMethodDesign.cardBackground,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: isSelected
-                                  ? AppColors.primary.withValues(alpha: 0.18)
-                                  : AppColors.neutral5.withValues(alpha: 0.35),
+                                  ? AppColors.primary.withOpacity(0.18)
+                                  : AppColors.neutral5.withOpacity(0.35),
                               width: isSelected ? 2 : 1,
                             ),
                           ),
@@ -642,7 +642,7 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
           height: 6 + (i * 4.0),
           margin: const EdgeInsets.only(left: 2),
           decoration: BoxDecoration(
-            color: i < bars ? AppColors.primary : AppColors.neutral5.withValues(alpha: 0.45),
+            color: i < bars ? AppColors.primary : AppColors.neutral5.withOpacity(0.45),
             borderRadius: BorderRadius.circular(2),
           ),
         );

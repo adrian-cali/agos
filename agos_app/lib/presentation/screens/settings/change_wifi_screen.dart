@@ -246,7 +246,7 @@ class _ChangeWifiScreenState extends State<ChangeWifiScreen> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 )
@@ -261,7 +261,7 @@ class _ChangeWifiScreenState extends State<ChangeWifiScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00D3F2).withValues(alpha: 0.12),
+                        color: const Color(0xFF00D3F2).withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.info_outline,
@@ -494,7 +494,7 @@ class _ChangeWifiScreenState extends State<ChangeWifiScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Colors.black.withOpacity(0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 2),
                   )
@@ -584,7 +584,7 @@ class _ChangeWifiScreenState extends State<ChangeWifiScreen> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 )

@@ -128,13 +128,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF1BA9E1).withValues(alpha: 0.15),
+                        color: const Color(0xFF1BA9E1).withOpacity(0.15),
                         blurRadius: 25,
                         offset: const Offset(0, 8),
                         spreadRadius: 2,
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
+                        color: Colors.black.withOpacity(0.1),
                         blurRadius: 15,
                         offset: const Offset(0, 4),
                       ),
@@ -348,7 +348,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
+                  color: const Color(0xFF00D3F2).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Icon(
@@ -413,7 +413,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
+              color: const Color(0xFF00D3F2).withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Icon(
@@ -509,7 +509,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00D3F2).withValues(alpha: 0.1),
+                  color: const Color(0xFF00D3F2).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Icon(
@@ -799,7 +799,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE74C3C).withValues(alpha: 0.1),
+                    color: const Color(0xFFE74C3C).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Icon(

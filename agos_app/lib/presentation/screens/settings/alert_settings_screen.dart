@@ -284,7 +284,7 @@ class _AlertSettingsScreenState extends ConsumerState<AlertSettingsScreen> {
             data: SliderThemeData(
               activeTrackColor: color,
               thumbColor: color,
-              inactiveTrackColor: color.withValues(alpha: 0.15),
+              inactiveTrackColor: color.withOpacity(0.15),
             ),
             child: Slider(
               value: value,
@@ -344,7 +344,7 @@ class _AlertSettingsScreenState extends ConsumerState<AlertSettingsScreen> {
             data: SliderThemeData(
               activeTrackColor: color,
               thumbColor: color,
-              inactiveTrackColor: color.withValues(alpha: 0.15),
+              inactiveTrackColor: color.withOpacity(0.15),
             ),
             child: RangeSlider(
               values: values,

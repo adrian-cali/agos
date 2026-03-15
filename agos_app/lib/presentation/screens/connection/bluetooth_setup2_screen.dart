@@ -246,7 +246,7 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen>
                   //   mainAxisAlignment: MainAxisAlignment.center,
                   //   children: [
                   //     _buildStepIndicator(1, false),
-                  //     Container(width: 40, height: 2, color: AppColors.neutral5.withValues(alpha: 0.45)),
+                  //     Container(width: 40, height: 2, color: AppColors.neutral5.withOpacity(0.45)),
                   //     _buildStepIndicator(2, true),
                   //   ],
                   // ),
@@ -333,10 +333,10 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen>
       decoration: BoxDecoration(
         color: ConnectionMethodDesign.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.neutral5.withValues(alpha: 0.6)),
+        border: Border.all(color: AppColors.neutral5.withOpacity(0.6)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -385,7 +385,7 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen>
                 style: OutlinedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: AppColors.primary,
-                  side: BorderSide(color: AppColors.primary.withValues(alpha: 0.12)),
+                  side: BorderSide(color: AppColors.primary.withOpacity(0.12)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Text('Grant', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.neutral1)),
@@ -401,7 +401,7 @@ class _BluetoothSetup2ScreenState extends State<BluetoothSetup2Screen>
   //     width: 36,
   //     height: 36,
   //     decoration: BoxDecoration(
-  //       color: isActive ? AppColors.primary : AppColors.neutral5.withValues(alpha: 0.3),
+  //       color: isActive ? AppColors.primary : AppColors.neutral5.withOpacity(0.3),
   //       shape: BoxShape.circle,
   //     ),
   //     child: Center(

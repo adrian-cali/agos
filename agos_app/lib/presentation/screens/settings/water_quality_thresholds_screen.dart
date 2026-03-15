@@ -426,13 +426,13 @@ class _WaterQualityThresholdsScreenState
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: Colors.white.withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
           ),
         ],
@@ -481,13 +481,13 @@ class _WaterQualityThresholdsScreenState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: Colors.white.withOpacity(0.7),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
           ),
         ],
@@ -579,7 +579,7 @@ class _WaterQualityThresholdsScreenState
     return SliderTheme(
       data: SliderThemeData(
         thumbColor: Colors.white,
-        overlayColor: const Color(0xFF0F172A).withValues(alpha: 0.1),
+        overlayColor: const Color(0xFF0F172A).withOpacity(0.1),
         activeTrackColor: const Color(0xFF0F172A),
         inactiveTrackColor: const Color(0xFFF8FAFC),
         thumbShape: const RoundSliderThumbShape(

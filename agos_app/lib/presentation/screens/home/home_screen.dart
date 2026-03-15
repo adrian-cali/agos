@@ -254,13 +254,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF1BA9E1).withValues(alpha: 0.15),
+                      color: const Color(0xFF1BA9E1).withOpacity(0.15),
                       blurRadius: 25,
                       offset: const Offset(0, 8),
                       spreadRadius: 2,
                     ),
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
+                      color: Colors.black.withOpacity(0.1),
                       blurRadius: 15,
                       offset: const Offset(0, 4),
                     ),
@@ -302,7 +302,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -428,7 +428,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -450,8 +450,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
-                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
+                      const Color(0xFF00B8DB).withOpacity(0.2),
+                      const Color(0xFF2B7FFF).withOpacity(0.2),
                     ],
                   ),
                 ),
@@ -500,7 +500,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   boxShadow: [
                     BoxShadow(
                       color: (isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E))
-                          .withValues(alpha: 0.32),
+                          .withOpacity(0.32),
                       blurRadius: 11,
                       offset: const Offset(0, 0),
                     ),
@@ -522,12 +522,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         boxShadow: [
                           BoxShadow(
                             color: (isLive ? const Color(0xFF009966) : const Color(0xFF9E9E9E))
-                                .withValues(alpha: 0.4),
+                                .withOpacity(0.4),
                             blurRadius: 6,
                             offset: const Offset(0, 0),
                           ),
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
+                            color: Colors.black.withOpacity(0.1),
                             blurRadius: 2,
                             offset: const Offset(1, 1),
                           ),
@@ -573,7 +573,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 end: Alignment.centerRight,
                 colors: [
                   Colors.transparent,
-                  const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                  const Color(0xFF00B8DB).withOpacity(0.3),
                   Colors.transparent,
                 ],
               ),
@@ -634,7 +634,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       height: 256,
       decoration: BoxDecoration(
         border: Border.all(
-          color: const Color(0xFF00B8DB).withValues(alpha: 0.4),
+          color: const Color(0xFF00B8DB).withOpacity(0.4),
           width: 4,
         ),
         borderRadius: BorderRadius.circular(16),
@@ -662,7 +662,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF06B6D4).withValues(alpha: 0.6),
+                      color: const Color(0xFF06B6D4).withOpacity(0.6),
                       blurRadius: 30,
                       offset: const Offset(0, -8),
                     ),
@@ -726,7 +726,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00B8DB).withValues(alpha: 0.1),
+                  color: const Color(0xFF00B8DB).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
@@ -748,7 +748,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.4),
+              color: Colors.white.withOpacity(0.4),
               shape: BoxShape.circle,
             ),
           ),
@@ -763,7 +763,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: const Color(0xFF00B8DB).withValues(alpha: 0.2),
+            color: const Color(0xFF00B8DB).withOpacity(0.2),
             width: 0.8,
           ),
         ),
@@ -771,7 +771,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       child: Text(
         level,
         style: TextStyle(
-          color: const Color(0xFF00D3F2).withValues(alpha: 0.6),
+          color: const Color(0xFF00D3F2).withOpacity(0.6),
           fontSize: 12,
           fontWeight: FontWeight.w400,
           fontFamily: 'Inter',
@@ -825,7 +825,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               end: Alignment.centerRight,
               colors: [
                 Colors.transparent,
-                const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                const Color(0xFF00B8DB).withOpacity(0.3),
                 Colors.transparent,
               ],
             ),
@@ -866,9 +866,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
+                color: statusColor.withOpacity(0.1),
                 border: Border.all(
-                  color: statusColor.withValues(alpha: 0.3),
+                  color: statusColor.withOpacity(0.3),
                   width: 0.8,
                 ),
                 borderRadius: BorderRadius.circular(16),
@@ -992,7 +992,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1014,8 +1014,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
-                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
+                      const Color(0xFF00B8DB).withOpacity(0.2),
+                      const Color(0xFF2B7FFF).withOpacity(0.2),
                     ],
                   ),
                 ),
@@ -1066,7 +1066,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   boxShadow: _pumpManualOn
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF00B8DB).withValues(alpha: 0.32),
+                            color: const Color(0xFF00B8DB).withOpacity(0.32),
                             blurRadius: 11,
                             offset: const Offset(0, 0),
                           ),
@@ -1114,7 +1114,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 end: Alignment.centerRight,
                 colors: [
                   Colors.transparent,
-                  const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                  const Color(0xFF00B8DB).withOpacity(0.3),
                   Colors.transparent,
                 ],
               ),
@@ -1210,7 +1210,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
                         color: selected
-                            ? const Color(0xFF00B8DB).withValues(alpha: 0.1)
+                            ? const Color(0xFF00B8DB).withOpacity(0.1)
                             : Colors.transparent,
                         border: Border.all(
                           color: selected
@@ -1267,7 +1267,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   color: _pumpManualOn ? const Color(0xFFFFEEEE) : null,
                   border: _pumpManualOn
                       ? Border.all(
-                          color: const Color(0xFFFF6B6B).withValues(alpha: 0.5),
+                          color: const Color(0xFFFF6B6B).withOpacity(0.5),
                           width: 1,
                         )
                       : null,
@@ -1276,7 +1276,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       ? []
                       : [
                           BoxShadow(
-                            color: const Color(0xFF00B8DB).withValues(alpha: 0.4),
+                            color: const Color(0xFF00B8DB).withOpacity(0.4),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -1321,7 +1321,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               Icon(
                 Icons.info_outline,
                 size: 14,
-                color: const Color(0xFF7F8C8D).withValues(alpha: 0.7),
+                color: const Color(0xFF7F8C8D).withOpacity(0.7),
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -1330,7 +1330,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       ? 'Pump will return to auto mode when timer ends.'
                       : 'Pump runs automatically based on sensor data. Use manual mode to clean the holding tank.',
                   style: TextStyle(
-                    color: const Color(0xFF7F8C8D).withValues(alpha: 0.8),
+                    color: const Color(0xFF7F8C8D).withOpacity(0.8),
                     fontSize: 11,
                     fontFamily: 'Inter',
                   ),
@@ -1356,7 +1356,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1378,8 +1378,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
-                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
+                      const Color(0xFF00B8DB).withOpacity(0.2),
+                      const Color(0xFF2B7FFF).withOpacity(0.2),
                     ],
                   ),
                 ),
@@ -1421,7 +1421,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: Switch(
                   value: uvOn,
                   activeThumbColor: const Color(0xFF00B8DB),
-                  activeTrackColor: const Color(0xFF00B8DB).withValues(alpha: 0.35),
+                  activeTrackColor: const Color(0xFF00B8DB).withOpacity(0.35),
                   inactiveThumbColor: const Color(0xFF7F8C8D),
                   inactiveTrackColor: const Color(0xFFDDE3E9),
                   onChanged: (val) {
@@ -1451,7 +1451,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       ? 'UV sterilisation active — water in holding tank is being treated'
                       : 'UV lamp is OFF — tap toggle to enable sterilisation',
                   style: TextStyle(
-                    color: const Color(0xFF7F8C8D).withValues(alpha: 0.85),
+                    color: const Color(0xFF7F8C8D).withOpacity(0.85),
                     fontSize: 11,
                     fontFamily: 'Inter',
                   ),
@@ -1498,7 +1498,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1520,8 +1520,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFF00B8DB).withValues(alpha: 0.2),
-                      const Color(0xFF2B7FFF).withValues(alpha: 0.2),
+                      const Color(0xFF00B8DB).withOpacity(0.2),
+                      const Color(0xFF2B7FFF).withOpacity(0.2),
                     ],
                   ),
                 ),
@@ -1570,7 +1570,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   boxShadow: pumpOn
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                            color: const Color(0xFF00B8DB).withOpacity(0.3),
                             blurRadius: 10,
                           )
                         ]
@@ -1611,7 +1611,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 end: Alignment.centerRight,
                 colors: [
                   Colors.transparent,
-                  const Color(0xFF00B8DB).withValues(alpha: 0.3),
+                  const Color(0xFF00B8DB).withOpacity(0.3),
                   Colors.transparent,
                 ],
               ),
@@ -1639,7 +1639,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: const Color(0xFF00B8DB).withValues(alpha: 0.5)),
+                              color: const Color(0xFF00B8DB).withOpacity(0.5)),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Center(
@@ -1674,7 +1674,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           boxShadow: [
                             BoxShadow(
                               color:
-                                  const Color(0xFF00B8DB).withValues(alpha: 0.4),
+                                  const Color(0xFF00B8DB).withOpacity(0.4),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -1713,7 +1713,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: const Color(0xFF00B8DB).withValues(alpha: 0.7)),
+                              color: const Color(0xFF00B8DB).withOpacity(0.7)),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Center(
@@ -1750,7 +1750,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: const Color(0xFFE53935).withValues(alpha: 0.7)),
+                              color: const Color(0xFFE53935).withOpacity(0.7)),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Center(
@@ -1801,7 +1801,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           boxShadow: [
                             BoxShadow(
                               color:
-                                  const Color(0xFF00B8DB).withValues(alpha: 0.4),
+                                  const Color(0xFF00B8DB).withOpacity(0.4),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -1839,7 +1839,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: const Color(0xFFE53935).withValues(alpha: 0.7)),
+                              color: const Color(0xFFE53935).withOpacity(0.7)),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Center(
@@ -1871,7 +1871,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Row(
             children: [
               Icon(Icons.info_outline, size: 13,
-                  color: const Color(0xFF7F8C8D).withValues(alpha: 0.7)),
+                  color: const Color(0xFF7F8C8D).withOpacity(0.7)),
               const SizedBox(width: 5),
               const Expanded(
                 child: Text(
@@ -1940,7 +1940,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
                         border: Border.all(
-                            color: const Color(0xFF00B8DB).withValues(alpha: 0.5)),
+                            color: const Color(0xFF00B8DB).withOpacity(0.5)),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -1971,7 +1971,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           decoration: BoxDecoration(
                             color: sel
-                                ? const Color(0xFF00B8DB).withValues(alpha: 0.1)
+                                ? const Color(0xFF00B8DB).withOpacity(0.1)
                                 : Colors.transparent,
                             border: Border.all(
                               color: sel
@@ -2069,7 +2069,7 @@ class WaterWavePainter extends CustomPainter {
       amplitudes: [22.0, 8.0],
       frequencies: [1.0, 2.0],
       phaseOffsets: [phase, phase + 1.2],
-      color: const Color(0xFF00D3F2).withValues(alpha: 0.08),
+      color: const Color(0xFF00D3F2).withOpacity(0.08),
     );
 
     // Wave 2 - front layer, more prominent
@@ -2079,7 +2079,7 @@ class WaterWavePainter extends CustomPainter {
       amplitudes: [15.0, 6.0],
       frequencies: [1.0, 2.0],
       phaseOffsets: [phase + 2.0, phase + 3.5],
-      color: const Color(0xFF00D3F2).withValues(alpha: 0.15),
+      color: const Color(0xFF00D3F2).withOpacity(0.15),
     );
   }
 
@@ -2135,7 +2135,7 @@ class _ArcPainter extends CustomPainter {
 
     // Background track
     final trackPaint = Paint()
-      ..color = const Color(0xFF00B8DB).withValues(alpha: 0.12)
+      ..color = const Color(0xFF00B8DB).withOpacity(0.12)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 7
       ..strokeCap = StrokeCap.round;

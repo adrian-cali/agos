@@ -12,7 +12,7 @@ class BottomNavBar extends StatelessWidget {
         color: Colors.white,
         border: Border(
           top: BorderSide(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: Colors.black.withOpacity(0.1),
             width: 1.0,
           ),
         ),
@@ -72,8 +72,8 @@ class BottomNavBar extends StatelessWidget {
             Navigator.pushReplacementNamed(context, route);
           }
         },
-        splashColor: const Color(0xFF00D3F2).withValues(alpha: 0.1),
-        highlightColor: const Color(0xFF00D3F2).withValues(alpha: 0.05),
+        splashColor: const Color(0xFF00D3F2).withOpacity(0.1),
+        highlightColor: const Color(0xFF00D3F2).withOpacity(0.05),
         child: SizedBox(
           height: double.infinity,
           width: double.infinity,

@@ -240,7 +240,7 @@ class _DeviceManagementScreenState
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withOpacity(0.04),
               blurRadius: 10,
               offset: const Offset(0, 4)),
         ],
@@ -333,7 +333,7 @@ class _DeviceManagementScreenState
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withOpacity(0.04),
               blurRadius: 8,
               offset: const Offset(0, 2))
         ],
@@ -342,7 +342,7 @@ class _DeviceManagementScreenState
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+            backgroundColor: AppColors.primary.withOpacity(0.12),
             child: Text(
               (user.name.isNotEmpty ? user.name : user.email)
                       .substring(0, 1)
@@ -395,10 +395,10 @@ class _DeviceManagementScreenState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
+        color: AppColors.primary.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.3)),
+            color: AppColors.primary.withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -424,7 +424,7 @@ class _DeviceManagementScreenState
         children: [
           Icon(Icons.devices_other,
               size: 64,
-              color: AppColors.neutral4.withValues(alpha: 0.5)),
+              color: AppColors.neutral4.withOpacity(0.5)),
           const SizedBox(height: 16),
           Text('No devices connected',
               style: GoogleFonts.inter(
@@ -444,7 +444,7 @@ class _DeviceManagementScreenState
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -457,7 +457,7 @@ class _DeviceManagementScreenState
             height: 56,
             decoration: BoxDecoration(
               color: (isConnected ? AppColors.success : AppColors.neutral4)
-                  .withValues(alpha: 0.12),
+                  .withOpacity(0.12),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(

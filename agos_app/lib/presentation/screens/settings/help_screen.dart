@@ -146,10 +146,10 @@ class HelpScreen extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -243,13 +243,13 @@ class HelpScreen extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: Colors.white.withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
           ),
         ],
@@ -264,7 +264,7 @@ class HelpScreen extends StatelessWidget {
                 Theme(
                   data: Theme.of(context).copyWith(
                     dividerColor: Colors.transparent,
-                    splashColor: const Color(0xFF00D3F2).withValues(alpha: 0.08),
+                    splashColor: const Color(0xFF00D3F2).withOpacity(0.08),
                   ),
                   child: ExpansionTile(
                     tilePadding: const EdgeInsets.symmetric(
@@ -302,7 +302,7 @@ class HelpScreen extends StatelessWidget {
                 if (!isLast)
                   Container(
                     height: 1.18,
-                    color: const Color(0xFFA2F4FD).withValues(alpha: 0.3),
+                    color: const Color(0xFFA2F4FD).withOpacity(0.3),
                   ),
               ],
             );
@@ -323,10 +323,10 @@ class HelpScreen extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border:
-            Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            Border.all(color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -368,13 +368,13 @@ class HelpScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: Colors.white.withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
           ),
         ],

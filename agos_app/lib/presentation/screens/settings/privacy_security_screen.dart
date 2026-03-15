@@ -410,12 +410,12 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.18),
+                color: Colors.white.withOpacity(0.18),
                 width: 1.18,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                  color: const Color(0xFF5DADE2).withOpacity(0.15),
                   blurRadius: 8,
                 ),
               ],
@@ -584,7 +584,7 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
               ),
             ),
             Icon(Icons.chevron_right,
-                size: 20, color: titleColor.withValues(alpha: 0.5)),
+                size: 20, color: titleColor.withOpacity(0.5)),
           ],
         ),
       ),

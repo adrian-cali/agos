@@ -303,7 +303,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.25),
+                                color: AppColors.primary.withOpacity(0.25),
                                 blurRadius: 12,
                                 offset: const Offset(0, 6),
                               ),
@@ -434,10 +434,10 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.neutral5.withValues(alpha: 0.6)),
+        border: Border.all(color: AppColors.neutral5.withOpacity(0.6)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -504,13 +504,13 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
                         horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppColors.primary.withValues(alpha: 0.06)
+                          ? AppColors.primary.withOpacity(0.06)
                           : AppColors.cardBackground,
                       borderRadius: BorderRadius.circular(ConnectionMethodDesign.iconRadius),
                       border: Border.all(
                         color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.18)
-                            : AppColors.neutral5.withValues(alpha: 0.35),
+                            ? AppColors.primary.withOpacity(0.18)
+                            : AppColors.neutral5.withOpacity(0.35),
                       ),
                     ),
                     child: Row(
@@ -569,7 +569,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
                               decoration: BoxDecoration(
                                 color: i < (network['signal'] as int)
                                     ? AppColors.primary
-                                    : AppColors.neutral5.withValues(alpha: 0.45),
+                                    : AppColors.neutral5.withOpacity(0.45),
                                 borderRadius: BorderRadius.circular(ConnectionMethodDesign.iconRadius),
                               ),
                             );
@@ -596,10 +596,10 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.neutral5.withValues(alpha: 0.6)),
+        border: Border.all(color: AppColors.neutral5.withOpacity(0.6)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -622,11 +622,11 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
               fillColor: const Color(0xFFF1F5F9),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.18)),
+                borderSide: BorderSide(color: AppColors.primary.withOpacity(0.18)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.18)),
+                borderSide: BorderSide(color: AppColors.primary.withOpacity(0.18)),
               ),
               prefixIcon: const Icon(Icons.wifi, color: Color(0xFF53EAFD)),
             ),
@@ -647,7 +647,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
               fillColor: AppColors.cardBackground,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.18)),
+                borderSide: BorderSide(color: AppColors.primary.withOpacity(0.18)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -665,9 +665,9 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.06),
+              color: AppColors.primary.withOpacity(0.06),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+              border: Border.all(color: AppColors.primary.withOpacity(0.12)),
             ),
             child: const Row(
               children: [

@@ -315,12 +315,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: Colors.white.withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white, width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 0),
           ),

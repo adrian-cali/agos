@@ -122,7 +122,7 @@ class TankDetailsScreen extends ConsumerWidget {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    AppColors.primary.withValues(alpha: 0.6),
+                                    AppColors.primary.withOpacity(0.6),
                                     AppColors.primary,
                                   ],
                                 ),
@@ -223,7 +223,7 @@ class TankDetailsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -235,7 +235,7 @@ class TankDetailsScreen extends ConsumerWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
+              color: color.withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 26),

@@ -64,14 +64,14 @@ class _DeviceSetupIntroScreenState extends State<DeviceSetupIntroScreen> {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: AppColors.neutral5.withValues(alpha: 0.4),
+                            color: AppColors.neutral5.withOpacity(0.4),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
+                              color: Colors.black.withOpacity(0.04),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -122,10 +122,10 @@ class _DeviceSetupIntroScreenState extends State<DeviceSetupIntroScreen> {
                       decoration: BoxDecoration(
                         color: ConnectionMethodDesign.cardBackground,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.neutral5.withValues(alpha: 0.6)),
+                        border: Border.all(color: AppColors.neutral5.withOpacity(0.6)),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
+                            color: Colors.black.withOpacity(0.03),
                             blurRadius: 20,
                             offset: const Offset(0, 8),
                           ),
@@ -192,7 +192,7 @@ class _DeviceSetupIntroScreenState extends State<DeviceSetupIntroScreen> {
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF1447E6).withValues(alpha: 0.22),
+                              color: const Color(0xFF1447E6).withOpacity(0.22),
                               blurRadius: 14,
                               offset: const Offset(0, 6),
                             ),

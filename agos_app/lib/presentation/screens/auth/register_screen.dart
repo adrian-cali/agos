@@ -224,15 +224,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
+                        color: Colors.white.withOpacity(0.85),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Colors.white.withOpacity(0.7),
                           width: 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF5DADE2).withValues(alpha: 0.12),
+                            color: const Color(0xFF5DADE2).withOpacity(0.12),
                             blurRadius: 20,
                             offset: const Offset(0, 8),
                           ),
@@ -508,7 +508,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF00B8DB).withValues(alpha: 0.35),
+            color: const Color(0xFF00B8DB).withOpacity(0.35),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),

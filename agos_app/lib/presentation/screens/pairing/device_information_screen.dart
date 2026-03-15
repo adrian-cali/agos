@@ -292,7 +292,7 @@ class _DeviceInformationScreenState
                           border: Border.all(color: Colors.white, width: 1.18),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                              color: const Color(0xFF5DADE2).withOpacity(0.15),
                               blurRadius: 8,
                             ),
                           ],
@@ -349,7 +349,7 @@ class _DeviceInformationScreenState
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                              color: const Color(0xFF5DADE2).withOpacity(0.15),
                               blurRadius: 8,
                             ),
                           ],

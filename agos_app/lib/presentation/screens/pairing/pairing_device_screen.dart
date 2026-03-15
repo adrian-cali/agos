@@ -93,7 +93,7 @@ class _PairingDeviceScreenState extends State<PairingDeviceScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF22D3EE).withValues(alpha: 0.37),
+                                color: const Color(0xFF22D3EE).withOpacity(0.37),
                                 blurRadius: 26.47,
                                 offset: const Offset(0, 0),
                               ),
@@ -195,7 +195,7 @@ class _PairingDeviceScreenState extends State<PairingDeviceScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                              color: const Color(0xFF5DADE2).withOpacity(0.15),
                               blurRadius: 8,
                               offset: const Offset(0, 0),
                             ),

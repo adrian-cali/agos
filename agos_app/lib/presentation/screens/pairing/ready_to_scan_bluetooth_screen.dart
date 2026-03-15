@@ -206,7 +206,7 @@ class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                              color: const Color(0xFF5DADE2).withOpacity(0.15),
                               blurRadius: 8,
                               offset: const Offset(0, 0),
                             ),
@@ -265,7 +265,7 @@ class _ReadyToScanBluetoothScreenState extends State<ReadyToScanBluetoothScreen>
                                       height: 82,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: const Color(0xFFAD46FF).withValues(alpha: 0.2),
+                                        color: const Color(0xFFAD46FF).withOpacity(0.2),
                                       ),
                                       child: const Icon(
                                         Icons.bluetooth_searching,

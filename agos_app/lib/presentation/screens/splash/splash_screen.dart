@@ -174,7 +174,7 @@ class _SplashScreenState extends State<SplashScreen>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.white.withValues(alpha: 0.4),
+                                          color: Colors.white.withOpacity(0.4),
                                           blurRadius: 8,
                                           spreadRadius: 1,
                                         ),
@@ -234,7 +234,7 @@ class WaterWavePainter extends CustomPainter {
       amplitudes: [28.0, 12.0],
       frequencies: [1.0, 2.0],
       phaseOffsets: [phase, phase + 1.2],
-      color: Colors.white.withValues(alpha: 0.14),
+      color: Colors.white.withOpacity(0.14),
     );
 
     // Wave 2 - front layer, most visible
@@ -244,7 +244,7 @@ class WaterWavePainter extends CustomPainter {
       amplitudes: [18.0, 7.0],
       frequencies: [1.0, 2.0],
       phaseOffsets: [phase + 2.0, phase + 3.5],
-      color: Colors.white.withValues(alpha: 0.30),
+      color: Colors.white.withOpacity(0.30),
     );
   }
 

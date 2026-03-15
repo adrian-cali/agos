@@ -476,10 +476,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border:
-            Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            Border.all(color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -583,10 +583,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border:
-            Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.18),
+            Border.all(color: Colors.white.withOpacity(0.18), width: 1.18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+            color: const Color(0xFF5DADE2).withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),

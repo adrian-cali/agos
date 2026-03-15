@@ -197,7 +197,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                   // Tab bar
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
+                      color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: TabBar(
@@ -292,7 +292,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.notifications_none,
-                size: 64, color: AppColors.neutral4.withValues(alpha: 0.4)),
+                size: 64, color: AppColors.neutral4.withOpacity(0.4)),
             const SizedBox(height: 16),
             const Text('No notifications',
                 style: TextStyle(fontSize: 16, color: AppColors.neutral4)),
@@ -381,7 +381,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -394,7 +394,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: severityColor.withValues(alpha: 0.12),
+              color: severityColor.withOpacity(0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(severityIcon, color: severityColor, size: 22),
@@ -410,7 +410,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: severityColor.withValues(alpha: 0.12),
+                        color: severityColor.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(

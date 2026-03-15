@@ -49,7 +49,7 @@ class WelcomeScreen extends StatelessWidget {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF22D3EE).withValues(alpha: 0.37),
+                          color: const Color(0xFF22D3EE).withOpacity(0.37),
                           blurRadius: 26.5,
                           spreadRadius: 0,
                         ),
@@ -153,12 +153,12 @@ class WelcomeScreen extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
+                        color: Colors.white.withOpacity(0.18),
                         width: 0.8,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF5DADE2).withValues(alpha: 0.15),
+                          color: const Color(0xFF5DADE2).withOpacity(0.15),
                           blurRadius: 8,
                           spreadRadius: 0,
                         ),
