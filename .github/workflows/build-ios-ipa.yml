@@ -36,12 +36,12 @@ jobs:
       - name: Find IPA file
         run: find build -name "*.ipa" -o -name "*.xcarchive" 2>/dev/null || echo "No IPA or XCArchive found"
 
-      - name: Upload IPA
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-ipa
-          path: agos_app/build/ios/ipa/*.ipa
+          name: ios-build
+          path: agos_app/build/ios/archive/
           retention-days: 7
           if-no-files-found: warn
 
