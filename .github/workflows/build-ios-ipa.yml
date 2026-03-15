@@ -38,12 +38,10 @@ jobs:
           echo "=== Contents of archive ==="
           ls -la build/ios/archive/Runner.xcarchive/Products/Applications/
           
-          APP_NAME=$(ls build/ios/archive/Runner.xcarchive/Products/Applications/ | grep -E '\.app$' | head -1)
-          echo "Found app: $APP_NAME"
-          
           mkdir -p build/ios/ipa
+          
           cd build/ios/archive/Runner.xcarchive/Products/Applications
-          zip -r ../../../ipa/Runner.ipa "$APP_NAME"
+          zip -r ../../../../ipa/Runner.ipa Runner.app
 
       - name: Find IPA file
         run: find build -name "*.ipa" 2>/dev/null | head -5 || echo "No IPA found"
