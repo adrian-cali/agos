@@ -66,7 +66,7 @@ const float TANK_CAPACITY_L  = 50000.0f; // litres (50 m³)
 // PH-4502C: calibrate PH_V_OFFSET by dipping probe in pH-7 buffer and adjusting the trim pot.
 // Standard PH-4502C outputs ~2.5 V at pH 7 (trim pot centred). If your reading at pH 7
 // is off by more than ±0.3 pH, adjust the trim pot first, then update this value.
-const float PH_V_OFFSET  = 2.5f;    // output voltage at pH 7 — adjust after calibration
+const float PH_V_OFFSET  = 2.535f;  // output voltage at pH 7 — adjusted from field logs
 const float PH_V_PER_PH  = 0.1786f; // V per pH unit (typical for PH-4502C)
 const float TDS_VREF     = 3.3f;    // DFRobot TDS V1.0: powered at 3.3 V
 // Turbidity zero-offset calibration.
@@ -103,11 +103,11 @@ const unsigned long RECONN_DELAY_MS  = 5000;  // reconnect delay on WS drop
 #define PIN_UV_RELAY      27   // UV lamp relay IN pin (NC terminal → UV ON by default)
 #define PIN_BYPASS_RELAY  25   // Bypass pump relay IN pin (NO terminal → bypass OFF by default)
 // LCD I2C uses hardware I2C: SDA = GPIO21, SCL = GPIO22 (handled by LiquidCrystal_I2C library)
-#define RELAY_ACTIVE_HIGH true  // true = pump wired to NC contact (HIGH de-energises relay,
-                               // NC closes → pump ON). At boot GPIO26 floats LOW → relay
-                               // energises → NC opens → pump stays OFF → no brownout crash.
+#define RELAY_ACTIVE_HIGH false // false = LOW-level trigger relay module (common with
+                               // optocoupler boards). ON drives IN LOW, OFF drives IN HIGH.
 const bool RELAY_UV_ACTIVE_HIGH     = true;   // NC wiring: HIGH = de-energised = UV ON at boot
 const bool RELAY_BYPASS_ACTIVE_HIGH = false;  // NO wiring: LOW  = energised     = bypass ON
+const bool RELAY_SELF_TEST_AT_BOOT  = true;   // brief startup pulse test for pump relay
 
 // BLE UUIDs — must match ble_provisioning_service.dart
 #define BLE_SERVICE_UUID       "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -196,9 +196,24 @@ float readTurbidity() {
   // DFRobot Turbidity Sensor V1.0 (SEN0189) powered from 5 V.
   // Voltage divider (10 kΩ + 20 kΩ) scales 0-4.5 V → 0-3.0 V for the ESP32 ADC.
   // Reverse the divider to recover the true sensor voltage before applying the formula.
-  long sum = 0;
-  for (int i = 0; i < 10; i++) { sum += analogRead(PIN_TURBIDITY); delay(2); }
-  float adcVoltage    = (sum / 10.0f) * 3.3f / 4095.0f;
+  const int samples = 21;
+  int raw[samples];
+  for (int i = 0; i < samples; i++) {
+    raw[i] = analogRead(PIN_TURBIDITY);
+    delay(2);
+  }
+  // Insertion sort for a small fixed-size buffer; median rejects short spikes.
+  for (int i = 1; i < samples; i++) {
+    int key = raw[i];
+    int j = i - 1;
+    while (j >= 0 && raw[j] > key) {
+      raw[j + 1] = raw[j];
+      j--;
+    }
+    raw[j + 1] = key;
+  }
+  int medianRaw = raw[samples / 2];
+  float adcVoltage    = medianRaw * 3.3f / 4095.0f;
   float sensorVoltage = adcVoltage / 0.667f;  // undo divider: 20/(10+20) = 0.667
   // DFRobot SEN0189 polynomial for 5 V supply (higher V = cleaner water):
   float ntu;
@@ -738,6 +753,19 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\n=== AGOS ESP32 Firmware ===");
+
+  if (RELAY_SELF_TEST_AT_BOOT) {
+    Serial.println("[RelayTest] Pump relay pulse test...");
+    bool onLevel = RELAY_ACTIVE_HIGH ? HIGH : LOW;
+    bool offLevel = RELAY_ACTIVE_HIGH ? LOW : HIGH;
+    for (int i = 0; i < 2; i++) {
+      digitalWrite(PIN_PUMP_RELAY, onLevel ? HIGH : LOW);
+      delay(250);  // audible click pulse
+      digitalWrite(PIN_PUMP_RELAY, offLevel ? HIGH : LOW);
+      delay(300);
+    }
+    Serial.println("[RelayTest] Done.");
+  }
 
   // Pin modes for sensors
   pinMode(PIN_TRIG, OUTPUT);
