@@ -123,8 +123,8 @@ WebSocketsClient ws;
 // Persisted credentials / device identity
 // Hardcoded fallback ID — overwritten by BLE provisioning if app sends one.
 char g_deviceId[32]  = "agos-BLE01";
-char g_ssid[64]      = "";
-char g_password[64]  = "";
+char g_ssid[64]      = "PLM_WIFI_2.4";
+char g_password[64]  = "PLMh@ribon";
 
 // Pump state
 volatile bool g_pumpActive    = false;
