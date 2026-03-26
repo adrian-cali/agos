@@ -17,8 +17,8 @@
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const char* WIFI_SSID     = "HG8145V5_43963";
-const char* WIFI_PASSWORD = "Nekneknyo";
+const char* WIFI_SSID     = "PLM_WIFI_2.4";
+const char* WIFI_PASSWORD = "PLMh@ribon";
 
 // The Google Apps Script deployment URL 
 // (Replace this after deploying your Apps Script Web App)
