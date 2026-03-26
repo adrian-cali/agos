@@ -25,7 +25,7 @@ class TankDetailsScreen extends ConsumerWidget {
     final wsHasTank = tankData.level > 0;
     final level = wsHasTank ? tankData.level : (latest?.level ?? 0.0);
     final volume = wsHasTank ? tankData.volume : (latest?.volume ?? 0.0);
-    final capacity = tankData.capacity > 0 ? tankData.capacity : 500.0;
+    final capacity = tankData.capacity > 0 ? tankData.capacity : 106.0;
     final flowRate =
         wsHasTank ? tankData.flowRate : (latest?.flowRate ?? 0.0);
 

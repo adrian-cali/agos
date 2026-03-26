@@ -22,7 +22,7 @@ class TankData {
   TankData({
     this.level = 0,
     this.volume = 0,
-    this.capacity = 50000,
+    this.capacity = 106,
     this.flowRate = 0,
     this.status = 'unknown',
     this.timestamp = '',
@@ -32,7 +32,7 @@ class TankData {
     return TankData(
       level: (json['level'] ?? 0).toDouble(),
       volume: (json['volume'] ?? 0).toDouble(),
-      capacity: (json['capacity'] ?? 50000).toDouble(),
+      capacity: (json['capacity'] ?? 106).toDouble(),
       flowRate: (json['flow_rate'] ?? 0).toDouble(),
       status: json['status'] ?? 'unknown',
       timestamp: json['timestamp'] ?? '',
@@ -754,7 +754,7 @@ class TankDataNotifier extends StateNotifier<TankData> {
   TankDataNotifier() : super(TankData(
     level: 0,
     volume: 0,
-    capacity: 50000,
+    capacity: 106,
     flowRate: 0,
     status: 'unknown',
     timestamp: '',
@@ -787,7 +787,7 @@ class TankDataNotifier extends StateNotifier<TankData> {
   /// shown when the sensor is offline.
   void clear() {
     if (!mounted) return;
-    state = TankData(level: 0, volume: 0, capacity: 50000, flowRate: 0, status: 'unknown', timestamp: '');
+    state = TankData(level: 0, volume: 0, capacity: 106, flowRate: 0, status: 'unknown', timestamp: '');
     SharedPreferences.getInstance().then((prefs) {
       try { prefs.remove(_key); } catch (_) {}
     });

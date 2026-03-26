@@ -59,8 +59,21 @@ const char* WS_PATH       = "/ws/sensor";
 const bool  WS_USE_SSL    = true;
 
 // Tank geometry — adjust to match your physical tank
-const float TANK_HEIGHT_CM   = 200.0f;  // cm from sensor to tank floor
-const float TANK_CAPACITY_L  = 50000.0f; // litres (50 m³)
+// Calibrated for current holding tank:
+// - Drum nominal capacity: 120 L
+// - Sensor-to-bottom height: 26 in
+// - Usable water height: 22.5 in (inlet hole)
+// - Diameter profile: 16.5 in (bottom) -> 20.0 in (mid) -> 16.5 in (top)
+const float INCH_TO_CM               = 2.54f;
+const float CUBIC_IN_TO_L            = 0.016387064f;
+const float TANK_HEIGHT_IN           = 26.0f;
+const float TANK_HEIGHT_CM           = TANK_HEIGHT_IN * INCH_TO_CM;
+const float TANK_USABLE_HEIGHT_IN    = 22.5f;
+const float TANK_USABLE_HEIGHT_CM    = TANK_USABLE_HEIGHT_IN * INCH_TO_CM;
+const float TANK_BOTTOM_DIAMETER_IN  = 16.5f;
+const float TANK_MID_DIAMETER_IN     = 20.0f;
+const float TANK_TOP_DIAMETER_IN     = 16.5f;
+const float TANK_NOMINAL_CAPACITY_L  = 120.0f;
 
 // Sensor calibration
 // PH-4502C: calibrate PH_V_OFFSET by dipping probe in pH-7 buffer and adjusting the trim pot.
@@ -289,14 +302,69 @@ float readTankLevel() {
 
   float distanceCm = duration * 0.0343f / 2.0f;
   // Water height = TANK_HEIGHT_CM - distance to surface
+  // Level % is based on usable water height (inlet hole), not full drum height.
   float waterHeight = TANK_HEIGHT_CM - distanceCm;
-  float levelPct    = constrain((waterHeight / TANK_HEIGHT_CM) * 100.0f, 0.0f, 100.0f);
+  float levelPct    = constrain((waterHeight / TANK_USABLE_HEIGHT_CM) * 100.0f, 0.0f, 100.0f);
   lastValidLevel = levelPct;
   return levelPct;
 }
 
+float drumDiameterAtHeightIn(float hIn) {
+  float h = constrain(hIn, 0.0f, TANK_HEIGHT_IN);
+  float half = TANK_HEIGHT_IN * 0.5f;
+  if (h <= half) {
+    float t = h / half;
+    return TANK_BOTTOM_DIAMETER_IN
+        + (TANK_MID_DIAMETER_IN - TANK_BOTTOM_DIAMETER_IN) * t;
+  }
+  float t = (h - half) / half;
+  return TANK_MID_DIAMETER_IN
+      + (TANK_TOP_DIAMETER_IN - TANK_MID_DIAMETER_IN) * t;
+}
+
+float integrateDrumVolumeIn3(float waterHeightIn) {
+  float h = constrain(waterHeightIn, 0.0f, TANK_HEIGHT_IN);
+  if (h <= 0.0f) return 0.0f;
+
+  // Midpoint integration is stable enough for 5-second sampling cadence.
+  const int slices = 52; // ~0.5 in per slice over the full tank height
+  float dz = h / slices;
+  float totalIn3 = 0.0f;
+
+  for (int i = 0; i < slices; i++) {
+    float zMid = (i + 0.5f) * dz;
+    float d = drumDiameterAtHeightIn(zMid);
+    float r = d * 0.5f;
+    totalIn3 += PI * r * r * dz;
+  }
+  return totalIn3;
+}
+
+float getGeometryScaleToNominal() {
+  static float scale = 1.0f;
+  static bool ready = false;
+  if (!ready) {
+    float fullModeledLiters = integrateDrumVolumeIn3(TANK_HEIGHT_IN) * CUBIC_IN_TO_L;
+    if (fullModeledLiters > 0.0f) {
+      scale = TANK_NOMINAL_CAPACITY_L / fullModeledLiters;
+    }
+    ready = true;
+  }
+  return scale;
+}
+
+float getUsableCapacityLiters() {
+  float usableModeledLiters = integrateDrumVolumeIn3(TANK_USABLE_HEIGHT_IN) * CUBIC_IN_TO_L;
+  return usableModeledLiters * getGeometryScaleToNominal();
+}
+
 float readVolume(float levelPct) {
-  return (levelPct / 100.0f) * TANK_CAPACITY_L;
+  float waterHeightCm = (constrain(levelPct, 0.0f, 100.0f) / 100.0f) * TANK_USABLE_HEIGHT_CM;
+  float waterHeightIn = waterHeightCm / INCH_TO_CM;
+
+  float modeledLiters = integrateDrumVolumeIn3(waterHeightIn) * CUBIC_IN_TO_L;
+  float liters = modeledLiters * getGeometryScaleToNominal();
+  return constrain(liters, 0.0f, getUsableCapacityLiters());
 }
 
 
@@ -699,7 +767,7 @@ void sendSensorData() {
   doc["device_id"]  = g_deviceId;
   doc["level"]      = round(level   * 10.0f) / 10.0f;
   doc["volume"]     = round(volume  * 10.0f) / 10.0f;
-  doc["capacity"]   = TANK_CAPACITY_L;
+  doc["capacity"]   = round(getUsableCapacityLiters() * 10.0f) / 10.0f;
   doc["flow_rate"]  = 0.0f;  // no flow sensor
   doc["turbidity"]  = round(turbidity  * 100.0f) / 100.0f;
   doc["ph"]         = round(ph         * 100.0f) / 100.0f;

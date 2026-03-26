@@ -230,9 +230,9 @@ app.add_middleware(
 state = {
     "tank_data": {
         "level": 68.0,
-        "volume": 33934.0,
-        "capacity": 50000.0,
-        "flow_rate": 145.0,
+        "volume": 72.1,
+        "capacity": 106.0,
+        "flow_rate": 0.0,
         "status": "moderate",
         "timestamp": datetime.now().isoformat()
     },
@@ -626,6 +626,7 @@ async def handle_sensor_data(data: dict):
     state["tank_data"].update({
         "level": data.get("level", state["tank_data"]["level"]),
         "volume": data.get("volume", state["tank_data"]["volume"]),
+        "capacity": data.get("capacity", state["tank_data"]["capacity"]),
         "flow_rate": data.get("flow_rate", state["tank_data"]["flow_rate"]),
         "pump_active": pump_active,
         "timestamp": datetime.now().isoformat()
