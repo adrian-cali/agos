@@ -1,6 +1,6 @@
 {
-    "name": "agos_app",
-    "short_name": "agos_app",
+    "name": "AGOS",
+    "short_name": "AGOS",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
