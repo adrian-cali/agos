@@ -160,7 +160,9 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
     // Generate device ID now so the ESP32 knows which ID to use when
     // connecting to the backend WebSocket.
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final deviceId = uid.isNotEmpty ? 'agos-${uid.substring(0, 8)}' : '';
+    final deviceId = _ble.simulationMode
+      ? 'agos-BLE01'
+      : (uid.isNotEmpty ? 'agos-${uid.substring(0, 8)}' : '');
     if (deviceId.isNotEmpty) {
       ref.read(setupStateProvider.notifier).setDeviceId(deviceId);
     }

@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -17,10 +19,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.agos.agos_app"
@@ -38,6 +36,29 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+val publishReleaseApks by tasks.registering {
+    doLast {
+        val src = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
+        val outDir = layout.buildDirectory.dir("outputs/flutter-apk").get().asFile
+        if (!src.exists()) return@doLast
+        outDir.mkdirs()
+        src.copyTo(File(outDir, "app-release.apk"), overwrite = true)
+        src.copyTo(File(outDir, "agos.apk"), overwrite = true)
+    }
+}
+
+tasks.configureEach {
+    if (name == "assembleRelease" || name == "packageRelease") {
+        finalizedBy(publishReleaseApks)
     }
 }
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/connection_method_design.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/ble_provisioning_service.dart';
+import '../../../data/services/firestore_service.dart';
 
 class DeviceSetupIntroScreen extends StatefulWidget {
   const DeviceSetupIntroScreen({super.key});
@@ -13,6 +15,18 @@ class DeviceSetupIntroScreen extends StatefulWidget {
 
 class _DeviceSetupIntroScreenState extends State<DeviceSetupIntroScreen> {
   final _ble = BleProvisioningService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || !mounted) return;
+      final hasDevice = await FirestoreService().hasLinkedDevice(user.uid);
+      if (!mounted || !hasDevice) return;
+      Navigator.pushReplacementNamed(context, '/home');
+    });
+  }
 
   void _toggleSimulation() {
     setState(() {

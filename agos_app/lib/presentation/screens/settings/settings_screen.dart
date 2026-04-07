@@ -7,7 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/notification_modal.dart';
 import '../../../data/services/firestore_service.dart'
-    show hasUnreadAlertsProvider, firestoreServiceProvider;
+  show hasUnreadAlertsProvider, firestoreServiceProvider, isGuestDemoProvider;
 import '../../../data/services/websocket_service.dart'
     show pushNotificationsEnabledProvider;
 import '../../../data/services/filter_reminder_service.dart';
@@ -756,6 +756,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
+                if (ref.read(isGuestDemoProvider)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Guest demo account is view-only.'),
+                    ),
+                  );
+                  return;
+                }
                 ref.read(filterReminderProvider.notifier).update(
                       dayOfMonth: selectedDay,
                       intervalMonths: selectedInterval,

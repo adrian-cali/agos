@@ -628,6 +628,14 @@ class FirestoreService {
   }
 }
 
+const kGuestDemoEmail = 'guest@agos.com';
+const kGuestDemoPassword = 'guest12345';
+
+bool isGuestDemoEmail(String? email) {
+  if (email == null) return false;
+  return email.trim().toLowerCase() == kGuestDemoEmail;
+}
+
 // ============= Providers =============
 
 /// The FirestoreService singleton.
@@ -643,6 +651,11 @@ final authStateProvider = StreamProvider<User?>((ref) {
 /// Convenience: the currently signed-in user (null if signed out).
 final currentUserProvider = Provider<User?>((ref) {
   return ref.watch(authStateProvider).valueOrNull;
+});
+
+final isGuestDemoProvider = Provider<bool>((ref) {
+  final email = ref.watch(currentUserProvider)?.email;
+  return isGuestDemoEmail(email);
 });
 
 /// Latest single reading for [deviceId] — real-time Firestore stream.

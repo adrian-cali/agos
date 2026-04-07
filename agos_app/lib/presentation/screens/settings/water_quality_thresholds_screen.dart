@@ -51,6 +51,15 @@ class _WaterQualityThresholdsScreenState
   }
 
   Future<void> _save() async {
+    if (ref.read(isGuestDemoProvider)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Guest demo account is view-only.')),
+        );
+      }
+      return;
+    }
+
     final user = ref.read(currentUserProvider);
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -241,8 +250,7 @@ class _WaterQualityThresholdsScreenState
                           badgeFg: const Color(0xFFBB4D00),
                           min: 0,
                           max: 2000,
-                          onChanged: (v) =>
-                              setState(() => _tdsWarning = v),
+                          onChanged: (v) => setState(() => _tdsWarning = v),
                         ),
                         const SizedBox(height: 12),
                         _buildHintBox(
@@ -267,7 +275,8 @@ class _WaterQualityThresholdsScreenState
                           badgeFg: const Color(0xFFBB4D00),
                           min: 0,
                           max: 100,
-                          onChanged: (v) => setState(() => _levelMin = v.clamp(0, _levelHigh - 5)),
+                          onChanged: (v) => setState(
+                              () => _levelMin = v.clamp(0, _levelHigh - 5)),
                         ),
                         const SizedBox(height: 12),
                         _buildSliderRow(
@@ -278,7 +287,8 @@ class _WaterQualityThresholdsScreenState
                           badgeFg: const Color(0xFF065F46),
                           min: 0,
                           max: 100,
-                          onChanged: (v) => setState(() => _levelHigh = v.clamp(_levelMin + 5, 100)),
+                          onChanged: (v) => setState(
+                              () => _levelHigh = v.clamp(_levelMin + 5, 100)),
                         ),
                         const SizedBox(height: 12),
                         _buildHintBox(

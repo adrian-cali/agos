@@ -86,6 +86,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return 'Good Evening,';
   }
 
+  bool _isGuestReadOnly() => ref.read(isGuestDemoProvider);
+
+  bool _blockIfGuestReadOnly() {
+    if (!_isGuestReadOnly()) return false;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Guest demo account is view-only.'),
+        ),
+      );
+    }
+    return true;
+  }
+
+  String _formatCardDate(DateTime date) {
+    const months = <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
+  }
+
 
   /// Wraps [child] with a staggered slide-up + fade-in animation.
   /// [index] (0, 1, 2, …) determines the start offset of the interval.
@@ -172,7 +204,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   children: [
                     const SizedBox(height: 25),
                     // You Saved card with wave animation
-                    _buildAnimated(0, _buildSavingsCard()),
+                    _buildAnimated(0, _buildSavingsCard(effectiveTank)),
                     const SizedBox(height: 25),
                     // Main Water Tank card
                     _buildAnimated(1, _buildWaterTankCard(effectiveTank, thresholds, isLive: isLive, lastData: lastData)),
@@ -180,9 +212,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     // Pump Control card
                     _buildAnimated(2, _buildPumpCard()),
                     const SizedBox(height: 25),
-                    // UV Steriliser card
-                    _buildAnimated(3, _buildUvCard()),
-                    const SizedBox(height: 25),
+                    // UV Steriliser card (temporarily hidden)
+                    // _buildAnimated(3, _buildUvCard()),
+                    // const SizedBox(height: 25),
                     // Bypass Schedule card
                     _buildAnimated(4, _buildBypassCard()),
                     const SizedBox(height: 25),
@@ -293,7 +325,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildSavingsCard() {
+  Widget _buildSavingsCard(TankData tankData) {
+    final now = DateTime.now();
+    final dateLabel = _formatCardDate(now);
+    final savedPercent = tankData.capacity > 0
+        ? ((tankData.volume / tankData.capacity) * 100).clamp(0.0, 100.0)
+        : 0.0;
+    final savedLiters = tankData.volume;
+
     return Container(
       height: 160,
       width: double.infinity,
@@ -331,7 +370,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Left side content
-                  const Expanded(
+                  Expanded(
                     child: SizedBox(
                       width: 100,
                       child: Column(
@@ -343,7 +382,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'February 01, 2026',
+                                dateLabel,
                                 style: TextStyle(
                                   color: Color(0xFF90A5B4),
                                   fontSize: 12,
@@ -371,7 +410,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '18%',
+                                '${savedPercent.round()}%',
                                 style: TextStyle(
                                   color: Color(0xFF1C5B8D),
                                   fontSize: 47,
@@ -383,7 +422,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               ),
                               SizedBox(height: 4),
                               Text(
-                                '870.9 gallons',
+                                '${savedLiters.toStringAsFixed(1)} liters',
                                 style: TextStyle(
                                   color: Color(0xFF384144),
                                   fontSize: 12,
@@ -564,64 +603,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ],
           ),
           // Divider
-          Container(
-            margin: const EdgeInsets.only(top: 16, bottom: 16),
-            height: 0.8,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Colors.transparent,
-                  const Color(0xFF00B8DB).withOpacity(0.3),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-          // Flow rate
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Flow Rate',
-                style: TextStyle(
-                  color: Color(0xFF7F8C8D),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  fontFamily: 'Inter',
-                ),
-              ),
-              Row(
-                children: [
-                  // Flow indicator bars
-                  Row(
-                    children: List.generate(3, (index) {
-                      return Container(
-                        margin: EdgeInsets.only(left: index > 0 ? 4 : 0),
-                        width: index == 2 ? 8 : 4,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00D3F3),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      );
-                    }),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${tankData.flowRate.toStringAsFixed(1)} L/min',
-                    style: const TextStyle(
-                      color: Color(0xFF00D3F2),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          // Container(
+          //   margin: const EdgeInsets.only(top: 16, bottom: 16),
+          //   height: 0.8,
+          //   decoration: BoxDecoration(
+          //     gradient: LinearGradient(
+          //       begin: Alignment.centerLeft,
+          //       end: Alignment.centerRight,
+          //       colors: [
+          //         Colors.transparent,
+          //         const Color(0xFF00B8DB).withOpacity(0.3),
+          //         Colors.transparent,
+          //       ],
+          //     ),
+          //   ),
+          // ),
+          // Flow rate (temporarily hidden)
+          // Row(
+          //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          //   children: [
+          //     const Text(
+          //       'Flow Rate',
+          //       style: TextStyle(
+          //         color: Color(0xFF7F8C8D),
+          //         fontSize: 14,
+          //         fontWeight: FontWeight.w400,
+          //         fontFamily: 'Inter',
+          //       ),
+          //     ),
+          //     Row(
+          //       children: [
+          //         // Flow indicator bars
+          //         Row(
+          //           children: List.generate(3, (index) {
+          //             return Container(
+          //               margin: EdgeInsets.only(left: index > 0 ? 4 : 0),
+          //               width: index == 2 ? 8 : 4,
+          //               height: 12,
+          //               decoration: BoxDecoration(
+          //                 color: const Color(0xFF00D3F3),
+          //                 borderRadius: BorderRadius.circular(10),
+          //               ),
+          //             );
+          //           }),
+          //         ),
+          //         const SizedBox(width: 8),
+          //         Text(
+          //           '${tankData.flowRate.toStringAsFixed(1)} L/min',
+          //           style: const TextStyle(
+          //             color: Color(0xFF00D3F2),
+          //             fontSize: 14,
+          //             fontWeight: FontWeight.w400,
+          //             fontFamily: 'Inter',
+          //           ),
+          //         ),
+          //       ],
+          //     ),
+          //   ],
+          // ),
         ],
       ),
     );
@@ -932,6 +971,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   // ─── Pump Control Card ───────────────────────────────────────────────────
 
   void _startPumpTimer(int durationSeconds) {
+    if (_blockIfGuestReadOnly()) return;
     _pumpCountdownTimer?.cancel();
     setState(() {
       _pumpManualOn = true;
@@ -963,6 +1003,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   void _stopPump({bool expired = false}) {
+    if (!expired && _blockIfGuestReadOnly()) return;
     _pumpCountdownTimer?.cancel();
     if (mounted) {
       setState(() {
@@ -1638,7 +1679,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => _showBypassScheduleDialog(sched),
+                      onTap: () {
+                        _showBypassScheduleDialog(sched);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 11),
                         decoration: BoxDecoration(
@@ -1664,6 +1707,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
+                        if (_blockIfGuestReadOnly()) return;
                         final durSec = sched.durationMinutes * 60;
                         ref.read(webSocketServiceProvider).sendBypassCommand(
                             on: true, durationSeconds: durSec);
@@ -1709,6 +1753,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
+                        if (_blockIfGuestReadOnly()) return;
                         ref.read(webSocketServiceProvider)
                             .sendBypassCommand(on: false);
                         ref.read(bypassStateProvider.notifier).pauseRun();
@@ -1746,6 +1791,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
+                        if (_blockIfGuestReadOnly()) return;
                         ref.read(webSocketServiceProvider)
                             .sendBypassCommand(on: false);
                         ref.read(bypassStateProvider.notifier).stopRun();
@@ -1790,6 +1836,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
+                        if (_blockIfGuestReadOnly()) return;
                         final remaining = bypassState.pausedRemainingSeconds ??
                             sched.durationMinutes * 60;
                         ref.read(webSocketServiceProvider).sendBypassCommand(
@@ -1837,6 +1884,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
+                        if (_blockIfGuestReadOnly()) return;
                         ref.read(bypassStateProvider.notifier).stopRun();
                       },
                       child: Container(
@@ -2013,6 +2061,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
                 TextButton(
                   onPressed: () {
+                    if (_blockIfGuestReadOnly()) return;
                     ref.read(webSocketServiceProvider).sendBypassSchedule(
                           hour: hour,
                           minute: minute,

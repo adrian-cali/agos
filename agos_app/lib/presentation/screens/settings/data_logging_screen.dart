@@ -24,8 +24,11 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   bool _exportingJson = false;
   bool _exportingPdf = false;
 
-  String get _deviceId =>
-      ref.read(linkedDeviceIdProvider).valueOrNull ?? '';
+  String? _linkedDeviceIdOrNull() {
+    final id = ref.read(linkedDeviceIdProvider).valueOrNull;
+    if (id == null || id.isEmpty) return null;
+    return id;
+  }
 
   @override
   void initState() {
@@ -50,17 +53,26 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
     } catch (_) {}
   }
 
-  Future<List<SensorReading>> _fetchReadings() async {
+  Future<List<SensorReading>> _fetchReadings(String deviceId) async {
     final service = ref.read(firestoreServiceProvider);
     // Use the full retention period (no artificial cap).
     // fetchReadings paginates automatically so large datasets are handled.
-    return service.fetchReadings(_deviceId, days: _retentionDays);
+    return service.fetchReadings(deviceId, days: _retentionDays);
   }
 
   Future<void> _exportCsv() async {
+    if (ref.read(isGuestDemoProvider)) {
+      _snack('Guest demo account is view-only.');
+      return;
+    }
+    final deviceId = _linkedDeviceIdOrNull();
+    if (deviceId == null) {
+      _snack('No linked device yet. Complete device setup first.');
+      return;
+    }
     setState(() => _exportingCsv = true);
     try {
-      final readings = await _fetchReadings();
+      final readings = await _fetchReadings(deviceId);
       if (readings.isEmpty) {
         _snack('No data to export.');
         return;
@@ -85,9 +97,18 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   Future<void> _exportJson() async {
+    if (ref.read(isGuestDemoProvider)) {
+      _snack('Guest demo account is view-only.');
+      return;
+    }
+    final deviceId = _linkedDeviceIdOrNull();
+    if (deviceId == null) {
+      _snack('No linked device yet. Complete device setup first.');
+      return;
+    }
     setState(() => _exportingJson = true);
     try {
-      final readings = await _fetchReadings();
+      final readings = await _fetchReadings(deviceId);
       if (readings.isEmpty) {
         _snack('No data to export.');
         return;
@@ -119,9 +140,18 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   Future<void> _exportPdf() async {
+    if (ref.read(isGuestDemoProvider)) {
+      _snack('Guest demo account is view-only.');
+      return;
+    }
+    final deviceId = _linkedDeviceIdOrNull();
+    if (deviceId == null) {
+      _snack('No linked device yet. Complete device setup first.');
+      return;
+    }
     setState(() => _exportingPdf = true);
     try {
-      final readings = await _fetchReadings();
+      final readings = await _fetchReadings(deviceId);
       final doc = pw.Document();
       final now = DateTime.now();
 
@@ -132,7 +162,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
           pw.Paragraph(
               text:
                   'Generated: ${now.year}-${_pad(now.month)}-${_pad(now.day)} ${_pad(now.hour)}:${_pad(now.minute)}'),
-          pw.Paragraph(text: 'Device: $_deviceId'),
+          pw.Paragraph(text: 'Device: $deviceId'),
           pw.Paragraph(
               text: 'Period: last $_retentionDays days | Readings: ${readings.length}'),
           pw.SizedBox(height: 12),
@@ -230,6 +260,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   Future<void> _savePrefs() async {
+    if (ref.read(isGuestDemoProvider)) {
+      _snack('Guest demo account is view-only.');
+      return;
+    }
     try {
       final user = ref.read(currentUserProvider);
       if (user == null) return;
@@ -250,6 +284,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isGuestDemo = ref.watch(isGuestDemoProvider);
+    final hasLinkedDevice =
+        (ref.watch(linkedDeviceIdProvider).valueOrNull ?? '').isNotEmpty;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
@@ -311,6 +349,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                       subtitle: 'Spreadsheet format for analysis',
                       onTap: _exportCsv,
                       isLoading: _exportingCsv,
+                      enabled: hasLinkedDevice && !isGuestDemo,
                     ),
                     const SizedBox(height: 5),
                     _buildExportCard(
@@ -323,6 +362,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                       subtitle: 'Raw data format',
                       onTap: _exportJson,
                       isLoading: _exportingJson,
+                      enabled: hasLinkedDevice && !isGuestDemo,
                     ),
                     const SizedBox(height: 5),
                     _buildExportCard(
@@ -335,6 +375,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                       subtitle: 'PDF with charts and statistics',
                       onTap: _exportPdf,
                       isLoading: _exportingPdf,
+                      enabled: hasLinkedDevice && !isGuestDemo,
                     ),
                     const SizedBox(height: 24),
                     _buildSectionHeader('DATA MANAGEMENT'),
@@ -384,7 +425,10 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
                     ),
                     const SizedBox(height: 8),
                     GestureDetector(
-                      onTap: () => _showClearDataDialog(context),
+                      onTap:
+                        (hasLinkedDevice && !isGuestDemo)
+                          ? () => _showClearDataDialog(context)
+                          : null,
                       child: Container(
                         width: double.infinity,
                         height: 36,
@@ -470,6 +514,8 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
   }
 
   Widget _buildRetentionCard() {
+    final isGuestDemo = ref.watch(isGuestDemoProvider);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -574,10 +620,13 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
     required String subtitle,
     required VoidCallback onTap,
     bool isLoading = false,
+    bool enabled = true,
   }) {
     return GestureDetector(
-      onTap: isLoading ? null : onTap,
-      child: Container(
+      onTap: (isLoading || !enabled) ? null : onTap,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -641,6 +690,7 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
         ],
       ),
     ),
+      ),
     );
   }
 
@@ -675,8 +725,13 @@ class _DataLoggingScreenState extends ConsumerState<DataLoggingScreen> {
 
   Future<void> _clearAllData() async {
     try {
+      final deviceId = _linkedDeviceIdOrNull();
+      if (deviceId == null) {
+        _snack('No linked device yet. Complete device setup first.');
+        return;
+      }
       final service = ref.read(firestoreServiceProvider);
-      await service.deleteAllReadings(_deviceId);
+      await service.deleteAllReadings(deviceId);
       if (mounted) _snack('All sensor data cleared.');
     } catch (e) {
       if (mounted) _snack('Failed to clear data: $e');

@@ -91,10 +91,7 @@ class BleProvisioningService {
     if (simulationMode) {
       await Future.delayed(const Duration(seconds: 2)); // fake scan delay
       return [
-        AgosBluetoothDevice(name: 'AGOS-Device-001', rssi: -55, isClassic: false),
-        AgosBluetoothDevice(name: 'AGOS-Device-002', rssi: -72, isClassic: false),
-        AgosBluetoothDevice(name: 'Phone Speaker',   rssi: -80, isClassic: true),
-        AgosBluetoothDevice(name: 'SmartWatch',      rssi: -65, isClassic: false),
+        AgosBluetoothDevice(name: 'agos-BLE01', rssi: -55, isClassic: false),
       ];
     }
     // ─────────────────────────────────────────────────────────────────────────

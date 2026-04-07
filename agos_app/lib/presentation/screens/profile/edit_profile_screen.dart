@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/fade_slide_in.dart';
+import '../../../data/services/firestore_service.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -142,6 +143,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isGuestDemo = ref.watch(isGuestDemoProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8FB),
       body: SafeArea(
@@ -251,7 +254,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       width: double.infinity,
                       height: 46,
                       child: GestureDetector(
-                        onTap: _isSaving ? null : _saveProfile,
+                        onTap: _isSaving
+                            ? null
+                            : () {
+                                if (isGuestDemo) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Guest demo account is view-only.'),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                _saveProfile();
+                              },
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(

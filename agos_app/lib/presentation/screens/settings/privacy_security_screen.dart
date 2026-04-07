@@ -63,6 +63,10 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
 
         return StatefulBuilder(builder: (ctx, setDialogState) {
           Future<void> doChange() async {
+            if (ref.read(isGuestDemoProvider)) {
+              _snack('Guest demo account is view-only.', error: true);
+              return;
+            }
             if (newCtrl.text != confirmCtrl.text) {
               _snack('New passwords do not match.', error: true);
               return;
@@ -278,6 +282,11 @@ class _PrivacySecurityScreenState extends ConsumerState<PrivacySecurityScreen> {
   }
 
   Future<void> _deleteAccount() async {
+    if (ref.read(isGuestDemoProvider)) {
+      _snack('Guest demo account is view-only.', error: true);
+      return;
+    }
+
     setState(() => _deletingAccount = true);
     try {
       final user = FirebaseAuth.instance.currentUser;

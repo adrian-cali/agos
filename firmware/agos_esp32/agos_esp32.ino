@@ -105,6 +105,7 @@ const float TDS_TEMP_COEF = 0.02f;  // TDS temperature coefficient (2 %/°C)
 // Timing
 const unsigned long SEND_INTERVAL_MS = 5000;  // 5 s between readings
 const unsigned long RECONN_DELAY_MS  = 5000;  // reconnect delay on WS drop
+const unsigned long LCD_REINIT_INTERVAL_MS = 180000; // periodic LCD controller refresh
 
 // Pin assignments
 #define PIN_TURBIDITY   34   // DFRobot Turbidity V1.0 (via 10kΩ/20kΩ voltage divider)
@@ -151,6 +152,7 @@ volatile bool g_reconnectWifi = false;
 // Timing
 unsigned long g_lastSendMs = 0;
 bool          g_wsConnected = false;
+unsigned long g_lastLcdReinitMs = 0;
 
 // pH smoothing — Exponential Moving Average across sensor cycles
 // alpha = 0.3: new reading has 30% weight; faster convergence without excessive noise
@@ -419,9 +421,24 @@ void tickLcdScroll() {
   if (len == 0) return;
   g_lcd.setCursor(0, 1);
   for (int col = 0; col < 16; col++) {
-    g_lcd.print((char)g_tickerBuf[(g_tickerPos + col) % len]);
+    char c = (char)g_tickerBuf[(g_tickerPos + col) % len];
+    // Guard against occasional buffer garbage rendering as random glyphs.
+    if (c < 32 || c > 126) c = ' ';
+    g_lcd.print(c);
   }
   g_tickerPos = (g_tickerPos + 1) % len;
+}
+
+void tickLcdHealth() {
+  unsigned long now = millis();
+  if (now - g_lastLcdReinitMs < LCD_REINIT_INTERVAL_MS) return;
+  g_lastLcdReinitMs = now;
+
+  // Equivalent to a soft LCD reset to recover from occasional I2C/LCD lockups.
+  g_lcd.init();
+  g_lcd.backlight();
+  updateLcdStatus();
+  tickLcdScroll();
 }
 
 // Update Row-1 status string — called from sendSensorData().
@@ -840,9 +857,11 @@ void setup() {
   pinMode(PIN_ECHO, INPUT);
 
   // LCD init — I2C on GPIO21 (SDA) / GPIO22 (SCL)
-  Wire.begin(21, 22);
+  Wire.begin(21, 22, 100000); // 100 kHz is more stable over longer/noisy wiring
+  Wire.setTimeOut(50);        // avoid long I2C bus hangs
   g_lcd.init();
   g_lcd.backlight();
+  g_lastLcdReinitMs = millis();
   g_lcd.setCursor(0, 0);
   g_lcd.print("AGOS Starting...");
   g_lcd.setCursor(0, 1);
@@ -932,6 +951,7 @@ void loop() {
 
   // ── LCD Row-2 scrolling ticker ───────────────────────────────────────────
   tickLcdScroll();
+  tickLcdHealth();
 
   // ── Send sensor data every SEND_INTERVAL_MS ─────────────────────────────
   unsigned long now = millis();

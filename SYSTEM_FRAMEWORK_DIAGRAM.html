@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AGOS Layered System Framework</title>
+  <style>
+    :root {
+      --bg: #eef5f9;
+      --panel: #ffffff;
+      --text: #16324a;
+      --muted: #5a7186;
+      --line: #c7d8e6;
+
+      --l1-bg: #e9f2ff;
+      --l1-stroke: #2f6fed;
+      --l2-bg: #eafaf2;
+      --l2-stroke: #1f9d5a;
+      --l3-bg: #fff3e6;
+      --l3-stroke: #c26a00;
+      --l4-bg: #f2eefe;
+      --l4-stroke: #6b46c1;
+
+      --card: #ffffff;
+      --shadow: 0 10px 24px rgba(16, 43, 71, 0.08);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 10%, #ffffff 0%, rgba(255, 255, 255, 0.15) 45%, transparent 60%),
+        radial-gradient(circle at 90% 90%, #ffffff 0%, rgba(255, 255, 255, 0.2) 35%, transparent 55%),
+        var(--bg);
+      line-height: 1.35;
+      padding: 28px 18px 40px;
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    .hero {
+      background: linear-gradient(120deg, #0d62b5, #1f87ff);
+      color: #fff;
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(24px, 4vw, 34px);
+      letter-spacing: 0.2px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: clamp(14px, 2.2vw, 16px);
+      max-width: 78ch;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 14px 0 0;
+    }
+
+    .tag {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #fff;
+    }
+
+    .visual-map {
+      margin: 18px 0;
+      background: var(--panel);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      border: 1px solid var(--line);
+    }
+
+    .visual-map h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .lane {
+      border: 2px solid #d2e0ea;
+      border-radius: 14px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #f8fcff;
+    }
+
+    .lane:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .lane-title {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #274660;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .lane-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+    }
+
+    .chip {
+      background: #ffffff;
+      border: 1px solid #c8d9e6;
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-size: 12px;
+      color: #24445f;
+      min-height: 58px;
+    }
+
+    .chip strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 3px;
+      color: #17344a;
+    }
+
+    .paths {
+      margin-top: 12px;
+      background: #f6fbff;
+      border: 1px dashed #aac4d8;
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .paths h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: #1f4561;
+    }
+
+    .path-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .path-item {
+      border: 1px solid #c4d8e8;
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 8px 9px;
+      font-size: 12px;
+      color: #264862;
+      line-height: 1.3;
+    }
+
+    .path-item b {
+      color: #0f3760;
+    }
+
+    .layer {
+      border-radius: var(--radius);
+      padding: 14px;
+      margin: 14px 0;
+      border: 2px solid transparent;
+      box-shadow: var(--shadow);
+    }
+
+    .layer h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .layer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .node {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 92px;
+    }
+
+    .node h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .node p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .l1 { background: var(--l1-bg); border-color: var(--l1-stroke); }
+    .l2 { background: var(--l2-bg); border-color: var(--l2-stroke); }
+    .l3 { background: var(--l3-bg); border-color: var(--l3-stroke); }
+    .l4 { background: var(--l4-bg); border-color: var(--l4-stroke); }
+
+    .l1 .node { border-left: 4px solid var(--l1-stroke); }
+    .l2 .node { border-left: 4px solid var(--l2-stroke); }
+    .l3 .node { border-left: 4px solid var(--l3-stroke); }
+    .l4 .node { border-left: 4px solid var(--l4-stroke); }
+
+    .flow {
+      margin-top: 18px;
+      background: var(--panel);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      border: 1px solid var(--line);
+    }
+
+    .flow h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .step {
+      position: relative;
+      background: #f8fbff;
+      border: 1px solid #d5e3ef;
+      border-radius: 14px;
+      padding: 12px 12px 12px 42px;
+      min-height: 88px;
+    }
+
+    .step .num {
+      position: absolute;
+      left: 10px;
+      top: 11px;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #0f6fd3;
+      color: #fff;
+      font-size: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+
+    .step strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .step span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .caption {
+      margin-top: 14px;
+      background: #ffffff;
+      border-left: 5px solid #1c76d8;
+      padding: 12px 14px;
+      border-radius: 10px;
+      color: #2a4258;
+      font-size: 14px;
+    }
+
+    .connectors {
+      display: grid;
+      place-items: center;
+      color: #375872;
+      font-size: 20px;
+      margin: 2px 0 6px;
+      letter-spacing: 1px;
+      user-select: none;
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 14px 10px 24px; }
+      .hero { border-radius: 18px; padding: 16px; }
+      .layer, .flow { border-radius: 14px; }
+      .layer h2, .flow h2 { font-size: 16px; }
+      .connectors { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>AGOS Full System Framework</h1>
+      <p>
+        Layered architecture view showing how AGOS handles onboarding, telemetry ingestion,
+        cloud persistence, and push notifications across mobile, web, desktop, and hardware.
+      </p>
+      <div class="legend">
+        <span class="tag">Layered Architecture</span>
+        <span class="tag">Realtime Telemetry</span>
+        <span class="tag">Firebase + FastAPI + ESP32</span>
+      </div>
+    </section>
+
+    <section class="visual-map">
+      <h2>System Picture View</h2>
+
+      <div class="lane">
+        <p class="lane-title">Layer 1: Presentation</p>
+        <div class="lane-grid">
+          <div class="chip"><strong>Flutter Mobile</strong>Android and iOS client UI</div>
+          <div class="chip"><strong>Flutter Web</strong>PWA dashboard and settings</div>
+          <div class="chip"><strong>Flutter Desktop</strong>Windows monitoring interface</div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <p class="lane-title">Layer 2: Device</p>
+        <div class="lane-grid">
+          <div class="chip"><strong>BLE Provisioning</strong>WiFi credentials transfer from app</div>
+          <div class="chip"><strong>ESP32 AGOS</strong>Controller for acquisition and control</div>
+          <div class="chip"><strong>Sensors and Relays</strong>Turbidity, pH, TDS, level, pump outputs</div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <p class="lane-title">Layer 3: Application</p>
+        <div class="lane-grid">
+          <div class="chip"><strong>FastAPI Backend</strong>WebSocket APIs on Render</div>
+          <div class="chip"><strong>Validation Engine</strong>Rule checks and threshold evaluation</div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <p class="lane-title">Layer 4: Cloud Data</p>
+        <div class="lane-grid">
+          <div class="chip"><strong>Firebase Auth</strong>User identity and sessions</div>
+          <div class="chip"><strong>Cloud Firestore</strong>Telemetry, settings, alerts</div>
+          <div class="chip"><strong>FCM Push</strong>Alert notification delivery</div>
+        </div>
+      </div>
+
+      <div class="paths">
+        <h3>Main Paths</h3>
+        <ul class="path-list">
+          <li class="path-item"><b>Onboarding:</b> App -> BLE -> ESP32</li>
+          <li class="path-item"><b>Telemetry:</b> ESP32 -> FastAPI -> Firestore</li>
+          <li class="path-item"><b>Live View:</b> Firestore -> Client Apps</li>
+          <li class="path-item"><b>Alerts:</b> FastAPI -> FCM -> Client Apps</li>
+          <li class="path-item"><b>Auth:</b> Client Apps -> Firebase Auth</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="layer l1">
+      <h2>Layer 1: Presentation Layer</h2>
+      <div class="layer-grid">
+        <article class="node">
+          <h3>Flutter Mobile App</h3>
+          <p>Android and iOS user interface for monitoring, setup, and configuration.</p>
+        </article>
+        <article class="node">
+          <h3>Flutter Web App (PWA)</h3>
+          <p>Browser-based access to dashboards and system settings.</p>
+        </article>
+        <article class="node">
+          <h3>Flutter Desktop App</h3>
+          <p>Windows client for local operations and data visualization.</p>
+        </article>
+      </div>
+    </section>
+
+    <div class="connectors">v v v</div>
+
+    <section class="layer l2">
+      <h2>Layer 2: Device Layer</h2>
+      <div class="layer-grid">
+        <article class="node">
+          <h3>BLE Provisioning</h3>
+          <p>App sends WiFi credentials to ESP32 during onboarding and network changes.</p>
+        </article>
+        <article class="node">
+          <h3>ESP32 Controller</h3>
+          <p>Collects sensor values, applies local control logic, and streams telemetry.</p>
+        </article>
+        <article class="node">
+          <h3>Sensors and Relays</h3>
+          <p>Turbidity, pH, TDS, ultrasonic level plus pump/UV/bypass control outputs.</p>
+        </article>
+      </div>
+    </section>
+
+    <div class="connectors">v v v</div>
+
+    <section class="layer l3">
+      <h2>Layer 3: Application Layer</h2>
+      <div class="layer-grid">
+        <article class="node">
+          <h3>FastAPI Backend on Render</h3>
+          <p>Receives WebSocket telemetry, validates payloads, and routes events.</p>
+        </article>
+        <article class="node">
+          <h3>Rule and Threshold Engine</h3>
+          <p>Checks limits and generates warning/critical events for notifications.</p>
+        </article>
+      </div>
+    </section>
+
+    <div class="connectors">v v v</div>
+
+    <section class="layer l4">
+      <h2>Layer 4: Cloud Data Layer</h2>
+      <div class="layer-grid">
+        <article class="node">
+          <h3>Firebase Auth</h3>
+          <p>Handles login, registration, and session identity for clients.</p>
+        </article>
+        <article class="node">
+          <h3>Cloud Firestore</h3>
+          <p>Stores readings, rollups, thresholds, alerts, and configuration state.</p>
+        </article>
+        <article class="node">
+          <h3>Firebase Cloud Messaging</h3>
+          <p>Delivers push notifications when backend rules detect threshold breaches.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="flow">
+      <h2>Operational Data Flow</h2>
+      <ol class="steps">
+        <li class="step">
+          <span class="num">1</span>
+          <strong>User Auth</strong>
+          <span>User signs in through Firebase Auth from any client app.</span>
+        </li>
+        <li class="step">
+          <span class="num">2</span>
+          <strong>Device Setup</strong>
+          <span>BLE provisioning sends network credentials to ESP32.</span>
+        </li>
+        <li class="step">
+          <span class="num">3</span>
+          <strong>Telemetry Ingestion</strong>
+          <span>ESP32 transmits sensor JSON to FastAPI over WebSocket.</span>
+        </li>
+        <li class="step">
+          <span class="num">4</span>
+          <strong>Persist and Sync</strong>
+          <span>Backend validates and stores data in Firestore for app dashboards.</span>
+        </li>
+        <li class="step">
+          <span class="num">5</span>
+          <strong>Alert Delivery</strong>
+          <span>Backend triggers FCM push notifications when limits are exceeded.</span>
+        </li>
+      </ol>
+
+      <p class="caption">
+        Figure: AGOS Layered System Framework. This framework separates user experience,
+        hardware acquisition, backend processing, and cloud services to support reliable
+        real-time monitoring and scalable deployment.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
