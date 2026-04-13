@@ -734,5 +734,5 @@ flutter build web --release
 
 ## License
 
-Academic capstone project. All rights reserved (c) 2024 AGOS Team - PLM.
+Academic capstone project. All rights reserved (c) 2026 AGOS Team - PLM.
 
