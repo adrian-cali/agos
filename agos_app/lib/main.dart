@@ -9,6 +9,8 @@ import 'core/constants/app_colors.dart';
 import 'core/services/local_notification_service.dart';
 import 'data/services/filter_reminder_service.dart';
 import 'data/services/firestore_service.dart';
+import 'data/services/websocket_service.dart'
+  show AlertItem, alertsProvider, cachedAlertsProvider, pushNotificationsEnabledProvider;
 import 'firebase_options.dart';
 import 'presentation/screens/splash/splash_screen.dart';
 
@@ -80,6 +82,19 @@ class _AgosAppState extends ConsumerState<AgosApp> {
           body: n.body ?? '',
         );
       }
+      _ingestRemoteMessageAsAlert(message);
+    });
+
+    // If user taps a notification and opens/resumes the app, add it in-app too.
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _ingestRemoteMessageAsAlert(message);
+    });
+
+    // Cold-start from notification tap.
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null) {
+        _ingestRemoteMessageAsAlert(message);
+      }
     });
 
     // Re-save token whenever FCM rotates it (typically every few weeks).
@@ -89,6 +104,39 @@ class _AgosAppState extends ConsumerState<AgosApp> {
         ref.read(firestoreServiceProvider).saveFcmToken(user.uid, token);
       }
     });
+  }
+
+  void _ingestRemoteMessageAsAlert(RemoteMessage message) {
+    if (!ref.read(pushNotificationsEnabledProvider)) return;
+
+    final now = DateTime.now().toIso8601String();
+    final data = message.data;
+    final metric = (data['metric'] ?? 'system').toString();
+    final title = message.notification?.title ??
+        data['title']?.toString() ??
+        'AGOS Alert';
+    final body = message.notification?.body ??
+        data['body']?.toString() ??
+        'A new AGOS notification was received.';
+    final id = (message.messageId != null && message.messageId!.isNotEmpty)
+        ? 'fcm_${message.messageId}'
+        : 'fcm_${DateTime.now().millisecondsSinceEpoch}';
+
+    final notifier = ref.read(alertsProvider.notifier);
+    if (ref.read(alertsProvider).any((a) => a.id == id)) {
+      return;
+    }
+
+    final alert = AlertItem(
+      id: id,
+      type: metric,
+      title: title,
+      description: body,
+      timestamp: now,
+      severity: metric == 'level' ? 'warning' : 'warning',
+    );
+    notifier.addAlert(alert);
+    ref.read(cachedAlertsProvider.notifier).addOrUpdate(alert);
   }
 
   @override

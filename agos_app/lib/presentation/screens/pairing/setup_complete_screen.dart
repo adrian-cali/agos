@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../data/services/ble_provisioning_service.dart';
 import '../../../data/services/firestore_service.dart';
 
 /// Setup Complete Screen (Figma 335:1059)
@@ -30,11 +31,12 @@ class _SetupCompleteScreenState extends ConsumerState<SetupCompleteScreen>
       }
 
       final setup = ref.read(setupStateProvider);
+        final isSimulation = BleProvisioningService().simulationMode;
 
       // Generate a device ID if none was set during pairing
       final deviceId = setup.deviceId.isNotEmpty
           ? setup.deviceId
-          : 'agos-${user.uid.substring(0, 8)}';
+          : (isSimulation ? 'agos-BLE01' : 'agos-${user.uid.substring(0, 8)}');
 
       await FirestoreService().saveDeviceSetup(
         uid: user.uid,
@@ -88,6 +90,12 @@ class _SetupCompleteScreenState extends ConsumerState<SetupCompleteScreen>
 
   @override
   Widget build(BuildContext context) {
+    final setup = ref.watch(setupStateProvider);
+    final isSimulation = BleProvisioningService().simulationMode;
+    final connectedDeviceId = setup.deviceId.isNotEmpty
+        ? setup.deviceId
+        : (isSimulation ? 'agos-BLE01' : 'AGOS-A1B2');
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -191,7 +199,7 @@ class _SetupCompleteScreenState extends ConsumerState<SetupCompleteScreen>
                           children: [
                             _buildChecklistItem(
                               'Device Connected',
-                              'AGOS-A1B2',
+                              connectedDeviceId,
                             ),
                             const SizedBox(height: 15),
                             _buildChecklistItem(

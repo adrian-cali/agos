@@ -586,34 +586,50 @@ class FirestoreService {
     String ownerName = '',
     String ownerPhone = '',
   }) async {
-    final batch = _db.batch();
-
-    // Update user profile with device link + extra info
+    // 1) Always persist user->device link first.
+    // This must succeed even when the device doc is demo/shared and not owned by this uid.
     final userUpdate = <String, dynamic>{'device_id': deviceId};
     if (ownerName.isNotEmpty) userUpdate['name'] = ownerName;
     if (ownerPhone.isNotEmpty) userUpdate['phone'] = ownerPhone;
     if (location.isNotEmpty) userUpdate['location'] = location;
-    batch.set(
-      _db.collection('users').doc(uid),
-      userUpdate,
-      SetOptions(merge: true),
-    );
+    await _db.collection('users').doc(uid).set(
+          userUpdate,
+          SetOptions(merge: true),
+        );
 
-    // Save device record
-    batch.set(
-      _db.collection('devices').doc(deviceId),
-      {
-        'name': deviceName,
-        'location': location,
-        'owner_uid': uid,
-        'connection_type': connectionType,
-        'created_at': FieldValue.serverTimestamp(),
-        'last_seen': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    // 2) Best-effort device metadata upsert.
+    // If the device is owned by a different user (common in simulation/demo IDs),
+    // security rules may deny update. Do not fail setup in that case.
+    try {
+      final deviceRef = _db.collection('devices').doc(deviceId);
+      final deviceSnap = await deviceRef.get();
 
-    await batch.commit();
+      if (!deviceSnap.exists) {
+        await deviceRef.set({
+          'name': deviceName,
+          'location': location,
+          'owner_uid': uid,
+          'connection_type': connectionType,
+          'created_at': FieldValue.serverTimestamp(),
+          'last_seen': FieldValue.serverTimestamp(),
+        });
+      } else {
+        final ownerUid = (deviceSnap.data()?['owner_uid'] ?? '') as String;
+        if (ownerUid == uid) {
+          await deviceRef.set(
+            {
+              'name': deviceName,
+              'location': location,
+              'connection_type': connectionType,
+              'last_seen': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+        }
+      }
+    } catch (_) {
+      // Intentionally ignore device-doc write errors so setup can continue.
+    }
   }
 
   /// Returns the linked device ID for [uid], or null if none.
