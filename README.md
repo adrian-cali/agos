@@ -23,6 +23,7 @@ AGOS is a cross-platform Flutter mobile application paired with a Python WebSock
 13. [ESP32 Hardware Integration](#13-esp32-hardware-integration)
 14. [Deployment (Backend)](#14-deployment-backend)
 15. [Team](#15-team)
+16. [Latest Release](#16-latest-release)
 
 ---
 
@@ -704,6 +705,30 @@ Same process — Fly.io, VPS, etc. will work.
 | **Pascual, Racelito** | Embedded Technician | Hardware configuration - ESP32 microcontroller, sensor and actuator interfacing, firmware-to-software communication | Configured firmware and hardware-to-software communication |
 
 **Institution:** Pamantasan ng Lungsod ng Maynila (PLM)
+
+---
+
+## 16. Latest Release
+
+Latest deployment created on **2026-04-13**.
+
+- **Git tag (main):** `v2026.04.13-demo`
+- **Main commit:** `2f303d4`
+- **Web deploy commit (gh-pages):** `24fabbc`
+
+### Release Artifacts
+
+- **Android APK:** `agos_app/build/app/outputs/flutter-apk/app-release.apk`
+- **Web build output:** `agos_app/build/web/`
+- **Local archived web bundle copy:** `ghpages_deploy_20260413_153608/`
+
+### Build Commands
+
+```bash
+cd agos_app
+flutter build apk --release
+flutter build web --release
+```
 
 ---
 
