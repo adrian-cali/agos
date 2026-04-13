@@ -1,0 +1,287 @@
+<!DOCTYPE html><html lang="en"><head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AGOS">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <!-- Google Sign-In Web Client ID (required by google_sign_in_web plugin) -->
+  <meta name="google-signin-client_id" content="804926916850-g59la9j4egla7la9nd160d7g7o0j2pop.apps.googleusercontent.com">
+
+  <title>AGOS</title>
+  <link rel="manifest" href="manifest.json">
+  
+  
+  <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
+  <style id="splash-screen-style">
+    html {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #ffffff;
+    }
+
+    .center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -ms-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    .contain {
+      display:block;
+      width:100%; height:100%;
+      object-fit: contain;
+    }
+
+    .stretch {
+      display:block;
+      width:100%; height:100%;
+    }
+
+    .cover {
+      display:block;
+      width:100%; height:100%;
+      object-fit: cover;
+    }
+
+    .bottom {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      -ms-transform: translate(-50%, 0);
+      transform: translate(-50%, 0);
+    }
+
+    .bottomLeft {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .bottomRight {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #ffffff;
+      }
+    }
+
+    #install-banner {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      z-index: 9999;
+      display: none;
+      background: #ffffff;
+      border: 1px solid #dbe4ee;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      padding: 12px 12px 10px;
+      font-family: Arial, sans-serif;
+    }
+
+    #install-banner .install-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    #install-banner .install-title {
+      font-size: 14px;
+      color: #12283a;
+      font-weight: 600;
+    }
+
+    #install-banner .install-sub {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #4d6376;
+      line-height: 1.3;
+    }
+
+    #install-banner .install-actions {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    #install-banner .btn-install {
+      border: 0;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #ffffff;
+      background: linear-gradient(90deg, #00b8db, #155dfc);
+      cursor: pointer;
+    }
+
+    #install-banner .btn-later,
+    #install-banner .btn-close {
+      border: 0;
+      background: transparent;
+      color: #4d6376;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+
+    #install-banner .btn-close {
+      font-size: 18px;
+      line-height: 1;
+      padding: 2px 6px;
+      color: #7b8ea1;
+    }
+
+    #install-banner .btn-later:hover,
+    #install-banner .btn-close:hover {
+      background: #f1f5f9;
+    }
+  </style>
+  <script id="splash-screen-script">
+    function removeSplashFromWeb() {
+      document.getElementById("splash")?.remove();
+      document.getElementById("splash-branding")?.remove();
+      document.body.style.background = "transparent";
+    }
+  </script>
+</head>
+<body>
+  <div id="install-banner" aria-live="polite">
+    <div class="install-row">
+      <div>
+        <div class="install-title">Install AGOS</div>
+        <div id="install-sub" class="install-sub">Add AGOS to your home screen for faster access.</div>
+      </div>
+      <button id="install-close" class="btn-close" aria-label="Close">x</button>
+    </div>
+    <div class="install-actions">
+      <button id="install-later" class="btn-later">Later</button>
+      <button id="install-button" class="btn-install">Install</button>
+    </div>
+  </div>
+
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script>
+    (function () {
+      var deferredInstallPrompt = null;
+      var dismissedKey = 'agos_install_prompt_dismissed';
+      var banner = document.getElementById('install-banner');
+      var installBtn = document.getElementById('install-button');
+      var closeBtn = document.getElementById('install-close');
+      var laterBtn = document.getElementById('install-later');
+      var sub = document.getElementById('install-sub');
+
+      function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      }
+
+      function isIosSafari() {
+        var ua = window.navigator.userAgent;
+        var isiOS = /iPhone|iPad|iPod/i.test(ua);
+        var isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua);
+        return isiOS && isSafari;
+      }
+
+      function showBanner() {
+        if (!banner || isStandalone()) return;
+        if (window.localStorage.getItem(dismissedKey) === '1') return;
+        banner.style.display = 'block';
+      }
+
+      function hideBanner() {
+        if (!banner) return;
+        banner.style.display = 'none';
+      }
+
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        showBanner();
+      });
+
+      window.addEventListener('appinstalled', function () {
+        deferredInstallPrompt = null;
+        window.localStorage.setItem(dismissedKey, '1');
+        hideBanner();
+      });
+
+      if (installBtn) {
+        installBtn.addEventListener('click', async function () {
+          if (deferredInstallPrompt) {
+            deferredInstallPrompt.prompt();
+            try {
+              await deferredInstallPrompt.userChoice;
+            } catch (_) {}
+            deferredInstallPrompt = null;
+            hideBanner();
+            return;
+          }
+          if (isIosSafari()) {
+            showBanner();
+          }
+        });
+      }
+
+      function dismissPrompt() {
+        window.localStorage.setItem(dismissedKey, '1');
+        hideBanner();
+      }
+
+      if (closeBtn) closeBtn.addEventListener('click', dismissPrompt);
+      if (laterBtn) laterBtn.addEventListener('click', dismissPrompt);
+
+      if (!isStandalone() && isIosSafari()) {
+        if (sub) {
+          sub.textContent = 'On iPhone/iPad: tap Share then Add to Home Screen.';
+        }
+        showBanner();
+      }
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async=""></script>
+
+
+</body></html>
